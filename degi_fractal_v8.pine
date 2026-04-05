@@ -1,0 +1,321 @@
+// © Battugs - Degi Fractal Structure v8.1
+// Бүс (тогтсон range → саарал box) → Шилжүүлэгч (хар fibo 0,1,2) → PB Загвар 1/2/3
+
+//@version=5
+indicator("Degi Fractal Structure", "DFS", overlay=true, max_boxes_count=200, max_lines_count=500, max_labels_count=200)
+
+// ══════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════
+var g1 = "Тохиргоо"
+i_atr_len    = input.int(14, "ATR Length", group=g1)
+i_disp_mult  = input.float(2.0, "Шилжүүлэгч ATR x", minval=1.0, maxval=5.0, step=0.1, group=g1)
+i_fib_ext    = input.int(50, "Fibo урагш сунгах", minval=10, maxval=200, group=g1)
+i_range_len  = input.int(20, "Бүс олох хугацаа (bars)", minval=5, maxval=60, group=g1)
+i_range_touch= input.int(2, "Бүс ойлт тоо (min)", minval=1, maxval=5, group=g1)
+
+var g2 = "Multi-Timeframe"
+i_htf1       = input.timeframe("240", "HTF 1", group=g2)
+i_htf2       = input.timeframe("D", "HTF 2", group=g2)
+
+var g3 = "Өнгө"
+i_col_zone   = input.color(color.new(#787b86, 80), "Бүс", group=g3)
+i_col_fibo   = input.color(#363a45, "Fibo", group=g3)
+
+// ══════════════════════════════════════════════════════════════
+// CORE
+// ══════════════════════════════════════════════════════════════
+atr_val   = ta.atr(i_atr_len)
+body_size = math.abs(close - open)
+
+// ══════════════════════════════════════════════════════════════
+// 1. ТОГТСОН БҮС ОЛОХ
+// ══════════════════════════════════════════════════════════════
+range_hi = ta.highest(high, i_range_len)
+range_lo = ta.lowest(low, i_range_len)
+range_size = range_hi - range_lo
+
+top_zone = range_hi - range_size * 0.15
+bot_zone = range_lo + range_size * 0.15
+
+var int top_touches = 0
+var int bot_touches = 0
+
+if high >= top_zone
+    top_touches += 1
+if low <= bot_zone
+    bot_touches += 1
+
+has_range = top_touches >= i_range_touch and bot_touches >= i_range_touch
+
+// Бүс state
+var bool  zone_active   = false
+var float zone_hi       = na
+var float zone_lo       = na
+var int   zone_start    = 0
+var box   zone_box      = na
+
+// Шинэ бүс тогтоход зурна
+if has_range and not zone_active
+    zone_hi     := range_hi
+    zone_lo     := range_lo
+    zone_start  := bar_index - i_range_len
+    zone_active := true
+    zone_box    := box.new(zone_start, zone_hi, bar_index, zone_lo,
+      bgcolor=i_col_zone,
+      border_color=color.new(#787b86, 40),
+      border_width=1)
+
+// Бүс идэвхитэй байх үед: ханш бүсээс гараагүй бол баруун талыг шинэчлэх
+if zone_active and not na(zone_box)
+    // Ханш бүсээс гарсан бол (шилжүүлэгч биш) → бүс дуусна
+    if close > zone_hi or close < zone_lo
+        box.set_right(zone_box, bar_index)
+        zone_active := false
+        top_touches := 0
+        bot_touches := 0
+    else
+        box.set_right(zone_box, bar_index)
+
+// ══════════════════════════════════════════════════════════════
+// 2. ШИЛЖҮҮЛЭГЧ = ТОМ IMPULSE БҮСИЙГ ЭВДЭХ
+// ══════════════════════════════════════════════════════════════
+is_disp_bull = body_size > atr_val * i_disp_mult and close > open
+is_disp_bear = body_size > atr_val * i_disp_mult and close < open
+
+// Бүс байгаа + том лаа + бүсийг эвдсэн = шилжүүлэгч
+// zone_active эсвэл саяхан дууссан бүс (1 бар өмнө zone_active байсан)
+disp_bull = is_disp_bull and not na(zone_hi) and close > zone_hi and bar_index - zone_start < i_range_len + 20
+disp_bear = is_disp_bear and not na(zone_lo) and close < zone_lo and bar_index - zone_start < i_range_len + 20
+
+var int   active_pattern  = 0
+var int   disp_dir        = 0
+var float disp_high       = na
+var float disp_low        = na
+var int   bars_since_disp = 0
+var bool  pb_started      = false
+var int   pb_count        = 0
+var int   prev_cd         = 0
+
+if disp_dir != 0
+    bars_since_disp += 1
+
+// ══════════════════════════════════════════════════════════════
+// BULLISH ШИЛЖҮҮЛЭГЧ
+// ══════════════════════════════════════════════════════════════
+if disp_bull
+    fib_end = bar_index + i_fib_ext
+
+    // Бүс box дуусгах
+    if not na(zone_box)
+        box.set_right(zone_box, bar_index)
+    zone_active := false
+
+    // Fibo: шилжүүлэгч лааны high/low дээр
+    // 0=displacement low, 1=displacement high, 2=projection
+    fib_0 = low
+    fib_1 = high
+    fib_range = fib_1 - fib_0
+    fib_2 = fib_1 + fib_range
+
+    // 0 — шилжүүлэгчийн low
+    line.new(bar_index, fib_0, fib_end, fib_0,
+      color=i_col_fibo, style=line.style_solid, width=2)
+    label.new(fib_end + 2, fib_0, "  0",
+      style=label.style_label_left, color=color.new(color.white, 100),
+      textcolor=i_col_fibo, size=size.normal)
+
+    // 1 — шилжүүлэгчийн high
+    line.new(bar_index, fib_1, fib_end, fib_1,
+      color=i_col_fibo, style=line.style_solid, width=2)
+    label.new(fib_end + 2, fib_1, "  1",
+      style=label.style_label_left, color=color.new(color.white, 100),
+      textcolor=i_col_fibo, size=size.normal)
+
+    // 2 — хэмжээсийн гүйцээлт
+    line.new(bar_index, fib_2, fib_end, fib_2,
+      color=i_col_fibo, style=line.style_dashed, width=2)
+    label.new(fib_end + 2, fib_2, "  2",
+      style=label.style_label_left, color=color.new(color.white, 100),
+      textcolor=i_col_fibo, size=size.normal)
+
+    // Босоо холбогч 0→1
+    line.new(bar_index, fib_0, bar_index, fib_1,
+      color=color.new(i_col_fibo, 40), style=line.style_solid, width=1)
+
+    disp_dir        := 1
+    disp_high       := high
+    disp_low        := low
+    bars_since_disp := 0
+    pb_started      := false
+    pb_count        := 0
+    active_pattern  := 0
+    top_touches     := 0
+    bot_touches     := 0
+    zone_hi         := na
+    zone_lo         := na
+
+// ══════════════════════════════════════════════════════════════
+// BEARISH ШИЛЖҮҮЛЭГЧ
+// ══════════════════════════════════════════════════════════════
+if disp_bear
+    fib_end = bar_index + i_fib_ext
+
+    if not na(zone_box)
+        box.set_right(zone_box, bar_index)
+    zone_active := false
+
+    // Fibo: шилжүүлэгч лааны high/low дээр
+    // Bear: 0=displacement high, 1=displacement low, 2=projection доош
+    fib_0 = high
+    fib_1 = low
+    fib_range = fib_0 - fib_1
+    fib_2 = fib_1 - fib_range
+
+    // 0 — шилжүүлэгчийн high
+    line.new(bar_index, fib_0, fib_end, fib_0,
+      color=i_col_fibo, style=line.style_solid, width=2)
+    label.new(fib_end + 2, fib_0, "  0",
+      style=label.style_label_left, color=color.new(color.white, 100),
+      textcolor=i_col_fibo, size=size.normal)
+
+    // 1 — шилжүүлэгчийн low
+    line.new(bar_index, fib_1, fib_end, fib_1,
+      color=i_col_fibo, style=line.style_solid, width=2)
+    label.new(fib_end + 2, fib_1, "  1",
+      style=label.style_label_left, color=color.new(color.white, 100),
+      textcolor=i_col_fibo, size=size.normal)
+
+    // 2 — хэмжээсийн гүйцээлт
+    line.new(bar_index, fib_2, fib_end, fib_2,
+      color=i_col_fibo, style=line.style_dashed, width=2)
+    label.new(fib_end + 2, fib_2, "  2",
+      style=label.style_label_left, color=color.new(color.white, 100),
+      textcolor=i_col_fibo, size=size.normal)
+
+    // Босоо холбогч 0→1
+    line.new(bar_index, fib_0, bar_index, fib_1,
+      color=color.new(i_col_fibo, 40), style=line.style_solid, width=1)
+
+    disp_dir        := -1
+    disp_high       := high
+    disp_low        := low
+    bars_since_disp := 0
+    pb_started      := false
+    pb_count        := 0
+    active_pattern  := 0
+    top_touches     := 0
+    bot_touches     := 0
+    zone_hi         := na
+    zone_lo         := na
+
+// ══════════════════════════════════════════════════════════════
+// 3. PB ЗАГВАР 1 / 2 / 3
+// ══════════════════════════════════════════════════════════════
+if disp_dir != 0 and bars_since_disp > 0 and active_pattern == 0
+    cur_cd = close > open ? 1 : -1
+    if cur_cd != prev_cd and prev_cd != 0
+        pb_count += 1
+
+    if disp_dir == 1
+        if not pb_started and close < open
+            pb_started := true
+
+        if not pb_started and bars_since_disp > 5 and close > disp_high
+            active_pattern := 2
+            label.new(bar_index, low - atr_val * 0.5, "Загвар 2",
+              style=label.style_label_up, color=color.new(#787b86, 0),
+              textcolor=color.white, size=size.small)
+
+        if pb_started and pb_count <= 3 and close > disp_high
+            active_pattern := 1
+            label.new(bar_index, low - atr_val * 0.5, "Загвар 1",
+              style=label.style_label_up, color=color.new(#787b86, 0),
+              textcolor=color.white, size=size.small)
+
+        if pb_started and pb_count > 3 and close > disp_high
+            active_pattern := 3
+            label.new(bar_index, low - atr_val * 0.5, "Загвар 3",
+              style=label.style_label_up, color=color.new(#787b86, 0),
+              textcolor=color.white, size=size.small)
+
+    else if disp_dir == -1
+        if not pb_started and close > open
+            pb_started := true
+
+        if not pb_started and bars_since_disp > 5 and close < disp_low
+            active_pattern := 2
+            label.new(bar_index, high + atr_val * 0.5, "Загвар 2",
+              style=label.style_label_down, color=color.new(#787b86, 0),
+              textcolor=color.white, size=size.small)
+
+        if pb_started and pb_count <= 3 and close < disp_low
+            active_pattern := 1
+            label.new(bar_index, high + atr_val * 0.5, "Загвар 1",
+              style=label.style_label_down, color=color.new(#787b86, 0),
+              textcolor=color.white, size=size.small)
+
+        if pb_started and pb_count > 3 and close < disp_low
+            active_pattern := 3
+            label.new(bar_index, high + atr_val * 0.5, "Загвар 3",
+              style=label.style_label_down, color=color.new(#787b86, 0),
+              textcolor=color.white, size=size.small)
+
+    prev_cd := cur_cd
+
+// ══════════════════════════════════════════════════════════════
+// 4. MTF TABLE
+// ══════════════════════════════════════════════════════════════
+detect_pattern(o, h, l, c) =>
+    is_bull = c > o
+    body = math.abs(c - o)
+    full = h - l
+    body_r = full > 0 ? body / full : 0
+    pb_wick = is_bull ? (o - l) : (h - o)
+    pb_r = full > 0 ? pb_wick / full : 0
+    pat = 0
+    if body_r > 0.7
+        pat := 2
+    else if pb_r > 0.15 and pb_r < 0.45 and body_r > 0.35
+        pat := 1
+    else
+        pat := 3
+    pat
+
+htf1_o = request.security(syminfo.tickerid, i_htf1, open)
+htf1_h = request.security(syminfo.tickerid, i_htf1, high)
+htf1_l = request.security(syminfo.tickerid, i_htf1, low)
+htf1_c = request.security(syminfo.tickerid, i_htf1, close)
+htf2_o = request.security(syminfo.tickerid, i_htf2, open)
+htf2_h = request.security(syminfo.tickerid, i_htf2, high)
+htf2_l = request.security(syminfo.tickerid, i_htf2, low)
+htf2_c = request.security(syminfo.tickerid, i_htf2, close)
+
+p1 = detect_pattern(htf1_o, htf1_h, htf1_l, htf1_c)
+p2 = detect_pattern(htf2_o, htf2_h, htf2_l, htf2_c)
+
+pat_str(p) => p == 1 ? "Загвар 1" : p == 2 ? "Загвар 2" : p == 3 ? "Загвар 3" : "—"
+dir_col(o, c) => c > o ? #089981 : #f23645
+
+var table tbl = table.new(position.top_right, 2, 3,
+  bgcolor=color.new(#1e1e1e, 5),
+  border_width=1, border_color=color.new(color.gray, 70))
+
+if barstate.islast
+    table.cell(tbl, 0, 0, "Цаг",        text_color=color.gray, text_size=size.small)
+    table.cell(tbl, 1, 0, "Лааны бүтэц", text_color=color.gray, text_size=size.small)
+    h1d = htf1_c > htf1_o ? " ▲" : " ▼"
+    h2d = htf2_c > htf2_o ? " ▲" : " ▼"
+    table.cell(tbl, 0, 1, i_htf1 + h1d, text_color=dir_col(htf1_o, htf1_c), text_size=size.small)
+    table.cell(tbl, 1, 1, pat_str(p1),   text_color=color.white, text_size=size.small)
+    table.cell(tbl, 0, 2, i_htf2 + h2d, text_color=dir_col(htf2_o, htf2_c), text_size=size.small)
+    table.cell(tbl, 1, 2, pat_str(p2),   text_color=color.white, text_size=size.small)
+
+// ══════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════
+alertcondition(disp_bull, "Bull Шилжүүлэгч", "Bullish шилжүүлэгч")
+alertcondition(disp_bear, "Bear Шилжүүлэгч", "Bearish шилжүүлэгч")
+alertcondition(active_pattern == 1, "Загвар 1", "PB Загвар 1")
+alertcondition(active_pattern == 2, "Загвар 2", "PB Загвар 2")
+alertcondition(active_pattern == 3, "Загвар 3", "PB Загвар 3")

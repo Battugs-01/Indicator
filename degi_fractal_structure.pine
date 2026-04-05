@@ -1,0 +1,309 @@
+ // © Battugs - Degi Fractal Structure v8                                                                                                                            
+  // Бүс (тогтсон range → саарал box) → Шилжүүлэгч (хар fibo 0,1,2) → PB Загвар 1/2/3                                                                                 
+                                                                                                                                                                      
+  //@version=5                                        
+  indicator("Degi Fractal Structure", "DFS", overlay=true, max_boxes_count=200, max_lines_count=500, max_labels_count=200)                                            
+                                                                                         
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  // INPUTS                                           
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  var g1 = "Тохиргоо"                                                                                                                                                 
+  i_swing_len  = input.int(5, "Swing Length", minval=2, maxval=20, group=g1)                                                                                          
+  i_atr_len    = input.int(14, "ATR Length", group=g1)                                                                                                                
+  i_disp_mult  = input.float(2.0, "Шилжүүлэгч ATR x", minval=1.0, maxval=5.0, step=0.1, group=g1)                                                                     
+  i_fib_ext    = input.int(50, "Fibo урагш сунгах", minval=10, maxval=200, group=g1)     
+  i_range_len  = input.int(20, "Бүс олох хугацаа (bars)", minval=5, maxval=60, group=g1, tooltip="Хэдэн лааны дотор range тогтсон эсэхийг шалгах")                    
+  i_range_touch= input.int(2, "Бүс ойлт тоо (min)", minval=1, maxval=5, group=g1, tooltip="High/Low бүсэд хэдэн удаа ойсон байх")
+                                                                                                                                                                      
+  var g2 = "Multi-Timeframe"                                                                                                                                          
+  i_htf1       = input.timeframe("240", "HTF 1", group=g2)                                                                                                            
+  i_htf2       = input.timeframe("D", "HTF 2", group=g2)                                                                                                              
+                                                                                                                                                                      
+  var g3 = "Өнгө"                                                                                                                                                     
+  i_col_zone   = input.color(color.new(#787b86, 80), "Бүс (саарал)", group=g3)                                                                                        
+  i_col_fibo   = input.color(#363a45, "Fibo шугам (хар)", group=g3)                                                                                                   
+  i_col_target = input.color(#363a45, "Fibo 2 target", group=g3)                         
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════                      
+  // CORE                                                                                                                                                             
+  // ══════════════════════════════════════════════════════════════
+  atr_val   = ta.atr(i_atr_len)                                                                                                                                       
+  body_size = math.abs(close - open)                                                                                                                                  
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  // 1. ТОГТСОН БҮС ОЛОХ                                                                 
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  range_hi = ta.highest(high, i_range_len)
+  range_lo = ta.lowest(low, i_range_len)                                                                                                                              
+  range_size = range_hi - range_lo                                                       
+                                                                                                                                                                      
+  is_tight_range = range_size < atr_val * 3                                                                                                                           
+                                                      
+  var int top_touches = 0                                                                                                                                             
+  var int bot_touches = 0                                                                
+  top_zone = range_hi - range_size * 0.15                                                                                                                             
+  bot_zone = range_lo + range_size * 0.15                                                
+                                                                                                                                                                      
+  if high >= top_zone                                                                    
+      top_touches += 1
+  else                                                                                                                                                                
+      top_touches := math.max(0, top_touches)         
+                                                                                                                                                                      
+  if low <= bot_zone                                                                     
+      bot_touches += 1                                                                                                                                                
+  else                                            
+      bot_touches := math.max(0, bot_touches)                                                                                                                         
+                                                                                                                                                                      
+  has_range = top_touches >= i_range_touch and bot_touches >= i_range_touch
+                                                                                                                                                                      
+  var bool  zone_drawn    = false                                                        
+  var float zone_hi       = na                        
+  var float zone_lo       = na                                                                                                                                        
+  var int   zone_start    = 0
+  var box   zone_box      = na                                                                                                                                        
+                                                                                         
+  if has_range and not zone_drawn                                                                                                                                     
+      zone_hi    := range_hi                                                             
+      zone_lo    := range_lo                                                                                                                                          
+      zone_start := bar_index - i_range_len
+      zone_drawn := true                                                                                                                                              
+                                                                                         
+      zone_box := box.new(zone_start, zone_hi, bar_index + i_fib_ext, zone_lo,
+        bgcolor=i_col_zone,                           
+        border_color=color.new(#787b86, 40),                                                                                                                          
+        border_width=1)   
+                                                                                                                                                                      
+  if zone_drawn and not na(zone_box)                                                     
+      box.set_right(zone_box, bar_index + 5)                                                                                                                          
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════
+  // 2. ШИЛЖҮҮЛЭГЧ = ТОМ IMPULSE БҮСИЙГ ЭВДЭХ                                                                                                                         
+  // ══════════════════════════════════════════════════════════════                      
+  is_disp_bull = body_size > atr_val * i_disp_mult and close > open                                                                                                   
+  is_disp_bear = body_size > atr_val * i_disp_mult and close < open                      
+                                                                                                                                                                      
+  disp_breaks_bull = is_disp_bull and zone_drawn and close > zone_hi                                                                                                  
+  disp_breaks_bear = is_disp_bear and zone_drawn and close < zone_lo                                                                                                  
+                                                                                                                                                                      
+  var int   active_pattern  = 0                                                                                                                                       
+  var int   disp_dir        = 0                                                                                                                                       
+  var float disp_high       = na                                                         
+  var float disp_low        = na                                                                                                                                      
+  var int   bars_since_disp = 0                                                                                                                                       
+  var bool  pb_started      = false
+  var int   pb_count        = 0                                                                                                                                       
+  var int   prev_cd         = 0                                                          
+                                                      
+  if disp_dir != 0                                                                                                                                                    
+      bars_since_disp += 1                            
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════                      
+  // BULLISH ШИЛЖҮҮЛЭГЧ → ХАР FIBO (0, 1, 2)                                                                                                                          
+  // ══════════════════════════════════════════════════════════════                      
+  if disp_breaks_bull                                                                                                                                                 
+      fib_end = bar_index + i_fib_ext                                                                                                                                 
+                                                      
+      if not na(zone_box)                                                                                                                                             
+          box.set_right(zone_box, bar_index)                                             
+                                                                                                                                                                      
+      fib_0 = zone_lo                                                                    
+      fib_1 = zone_hi                                                                                                                                                 
+      fib_range = fib_1 - fib_0                                                          
+      fib_2 = fib_1 + fib_range                                                                                                                                       
+                                                                                                                                                                      
+      line.new(zone_start, fib_0, fib_end, fib_0, 
+        color=i_col_fibo, style=line.style_solid, width=2)                                                                                                            
+      label.new(fib_end + 2, fib_0, "  0",                                                                                                                            
+        style=label.style_label_left, color=color.new(color.white, 100),
+        textcolor=i_col_fibo, size=size.normal)                                                                                                                       
+                                                                                         
+      line.new(zone_start, fib_1, fib_end, fib_1,                                                                                                                     
+        color=i_col_fibo, style=line.style_solid, width=2)                                                                                                            
+      label.new(fib_end + 2, fib_1, "  1",                                                                                                                            
+        style=label.style_label_left, color=color.new(color.white, 100),                                                                                              
+        textcolor=i_col_fibo, size=size.normal)                                                                                                                       
+                                                                                         
+      line.new(bar_index, fib_2, fib_end, fib_2,                                                                                                                      
+        color=i_col_target, style=line.style_dashed, width=2)                            
+      label.new(fib_end + 2, fib_2, "  2",                                                                                                                            
+        style=label.style_label_left, color=color.new(color.white, 100),
+        textcolor=i_col_target, size=size.normal)                                                                                                                     
+                                                                                         
+      line.new(zone_start, fib_0, zone_start, fib_1,                                                                                                                  
+        color=color.new(i_col_fibo, 40), style=line.style_solid, width=1)                
+                                                                                                                                                                      
+      label.new(bar_index, high + atr_val * 0.3, "Шилжүүлэгч ▲",
+        style=label.style_label_down, color=color.new(i_col_fibo, 0),                                                                                                 
+        textcolor=color.white, size=size.small)                                          
+                                                                                                                                                                      
+      disp_dir        := 1                                                                                                                                            
+      disp_high       := high                                                                                                                                         
+      disp_low        := low                                                                                                                                          
+      bars_since_disp := 0                                                               
+      pb_started      := false                                                                                                                                        
+      pb_count        := 0                                                               
+      active_pattern  := 0                                                                                                                                            
+      zone_drawn      := false                                                           
+      top_touches     := 0                            
+      bot_touches     := 0                        
+
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  // BEARISH ШИЛЖҮҮЛЭГЧ → ХАР FIBO (0, 1, 2)          
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  if disp_breaks_bear                                                                    
+      fib_end = bar_index + i_fib_ext                                                                                                                                 
+                          
+      if not na(zone_box)                                                                                                                                             
+          box.set_right(zone_box, bar_index)                                             
+
+      fib_0 = zone_hi                                                                                                                                                 
+      fib_1 = zone_lo
+      fib_range = fib_0 - fib_1                                                                                                                                       
+      fib_2 = fib_1 - fib_range                                                          
+                                                  
+      line.new(zone_start, fib_0, fib_end, fib_0,
+        color=i_col_fibo, style=line.style_solid, width=2)                                                                                                            
+      label.new(fib_end + 2, fib_0, "  0",        
+        style=label.style_label_left, color=color.new(color.white, 100),                                                                                              
+        textcolor=i_col_fibo, size=size.normal)                                                                                                                       
+                                                      
+      line.new(zone_start, fib_1, fib_end, fib_1,                                                                                                                     
+        color=i_col_fibo, style=line.style_solid, width=2)                               
+      label.new(fib_end + 2, fib_1, "  1",                                                                                                                            
+        style=label.style_label_left, color=color.new(color.white, 100),
+        textcolor=i_col_fibo, size=size.normal)                                                                                                                       
+                                                                                         
+      line.new(bar_index, fib_2, fib_end, fib_2,                                                                                                                      
+        color=i_col_target, style=line.style_dashed, width=2)
+      label.new(fib_end + 2, fib_2, "  2",                                                                                                                            
+        style=label.style_label_left, color=color.new(color.white, 100),                                                                                              
+        textcolor=i_col_target, size=size.normal) 
+                                                                                                                                                                      
+      line.new(zone_start, fib_0, zone_start, fib_1,                                                                                                                  
+        color=color.new(i_col_fibo, 40), style=line.style_solid, width=1)
+                                                                                                                                                                      
+      label.new(bar_index, low - atr_val * 0.3, "Шилжүүлэгч ▼",                                                                                                       
+        style=label.style_label_up, color=color.new(i_col_fibo, 0),
+        textcolor=color.white, size=size.small)                                                                                                                       
+                                                                                         
+      disp_dir        := -1                                                                                                                                           
+      disp_high       := high                     
+      disp_low        := low                                                                                                                                          
+      bars_since_disp := 0                                                                                                                                            
+      pb_started      := false
+      pb_count        := 0                                                                                                                                            
+      active_pattern  := 0                                                               
+      zone_drawn      := false                        
+      top_touches     := 0                        
+      bot_touches     := 0
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════
+  // 3. PB ЗАГВАР 1 / 2 / 3                                                                                                                                           
+  // ══════════════════════════════════════════════════════════════                      
+  if disp_dir != 0 and bars_since_disp > 0 and active_pattern == 0
+      cur_cd = close > open ? 1 : -1              
+      if cur_cd != prev_cd and prev_cd != 0           
+          pb_count += 1                                                                                                                                               
+                                                  
+      if disp_dir == 1                                                                                                                                                
+          if not pb_started and close < open                                                                                                                          
+              pb_started := true                                                                                                                                      
+                                                                                                                                                                      
+          if not pb_started and bars_since_disp > 5 and close > disp_high                                                                                             
+              active_pattern := 2
+              label.new(bar_index, low - atr_val * 0.5, "PB: Загвар 2\nШууд явсан",                                                                                   
+                style=label.style_label_up, color=color.new(#787b86, 0),                 
+                textcolor=color.white, size=size.normal)                                                                                                              
+                                                                                         
+          if pb_started and pb_count <= 3 and close > disp_high                                                                                                       
+              active_pattern := 1                                                                                                                                     
+              label.new(bar_index, low - atr_val * 0.5, "PB: Загвар 1\nPB → Гүйцээлт",                                                                                
+                style=label.style_label_up, color=color.new(#787b86, 0),                                                                                              
+                textcolor=color.white, size=size.normal)                                 
+                                                                                                                                                                      
+          if pb_started and pb_count > 3 and close > disp_high                           
+              active_pattern := 3                                                                                                                                     
+              label.new(bar_index, low - atr_val * 0.5, "PB: Загвар 3\n3 давалгаа",                                                                                   
+                style=label.style_label_up, color=color.new(#787b86, 0),                                                                                              
+                textcolor=color.white, size=size.normal)                                                                                                              
+                                                                                         
+      else if disp_dir == -1
+          if not pb_started and close > open                                                                                                                          
+              pb_started := true                  
+                                                                                                                                                                      
+          if not pb_started and bars_since_disp > 5 and close < disp_low                                                                                              
+              active_pattern := 2
+              label.new(bar_index, high + atr_val * 0.5, "PB: Загвар 2\nШууд явсан",                                                                                  
+                style=label.style_label_down, color=color.new(#787b86, 0),               
+                textcolor=color.white, size=size.normal)
+                                                      
+          if pb_started and pb_count <= 3 and close < disp_low                                                                                                        
+              active_pattern := 1
+              label.new(bar_index, high + atr_val * 0.5, "PB: Загвар 1\nPB → Гүйцээлт",                                                                               
+                style=label.style_label_down, color=color.new(#787b86, 0),               
+                textcolor=color.white, size=size.normal)                                                                                                              
+                                                                                         
+          if pb_started and pb_count > 3 and close < disp_low
+              active_pattern := 3                                                                                                                                     
+              label.new(bar_index, high + atr_val * 0.5, "PB: Загвар 3\n3 давалгаа",
+                style=label.style_label_down, color=color.new(#787b86, 0),                                                                                            
+                textcolor=color.white, size=size.normal)                                 
+                                                                                                                                                                      
+      prev_cd := cur_cd                                                                  
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════
+  // 4. MTF TABLE                                                                                                                                                     
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  detect_pattern(o, h, l, c) =>
+      is_bull = c > o                                                                                                                                                 
+      body = math.abs(c - o)                                                             
+      full = h - l                                    
+      body_r = full > 0 ? body / full : 0                                                                                                                             
+      pb_wick = is_bull ? (o - l) : (h - o)
+      pb_r = full > 0 ? pb_wick / full : 0                                                                                                                            
+      pat = 0                                                                            
+      if body_r > 0.7                                                                                                                                                 
+          pat := 2                                                                                                                                                    
+      else if pb_r > 0.15 and pb_r < 0.45 and body_r > 0.35                                                                                                           
+          pat := 1                                                                                                                                                    
+      else                                                                                                                                                            
+          pat := 3                                                                                                                                                    
+      pat                                                                                
+                                                                                                                                                                      
+  htf1_o = request.security(syminfo.tickerid, i_htf1, open)                              
+  htf1_h = request.security(syminfo.tickerid, i_htf1, high)                                                                                                           
+  htf1_l = request.security(syminfo.tickerid, i_htf1, low)                               
+  htf1_c = request.security(syminfo.tickerid, i_htf1, close)
+  htf2_o = request.security(syminfo.tickerid, i_htf2, open)                                                                                                           
+  htf2_h = request.security(syminfo.tickerid, i_htf2, high)
+  htf2_l = request.security(syminfo.tickerid, i_htf2, low)                                                                                                            
+  htf2_c = request.security(syminfo.tickerid, i_htf2, close)                             
+                                                                                                                                                                      
+  p1 = detect_pattern(htf1_o, htf1_h, htf1_l, htf1_c)                                    
+  p2 = detect_pattern(htf2_o, htf2_h, htf2_l, htf2_c)                                                                                                                 
+                                                                                                                                                                      
+  pat_str(p) => p == 1 ? "Загвар 1" : p == 2 ? "Загвар 2" : p == 3 ? "Загвар 3" : "—"
+  dir_col(o, c) => c > o ? #089981 : #f23645                                                                                                                          
+                                                                                         
+  var table tbl = table.new(position.top_right, 2, 3,                                                                                                                 
+    bgcolor=color.new(#1e1e1e, 5),                                                                                                                                    
+    border_width=1, border_color=color.new(color.gray, 70))
+                                                                                                                                                                      
+  if barstate.islast                                                                                                                                                  
+      table.cell(tbl, 0, 0, "Цаг",        text_color=color.gray, text_size=size.small)                                                                                
+      table.cell(tbl, 1, 0, "Лааны бүтэц", text_color=color.gray, text_size=size.small)                                                                               
+      h1d = htf1_c > htf1_o ? " ▲" : " ▼"                                                                                                                             
+      h2d = htf2_c > htf2_o ? " ▲" : " ▼"                                                                                                                             
+      table.cell(tbl, 0, 1, i_htf1 + h1d, text_color=dir_col(htf1_o, htf1_c), text_size=size.small)                                                                   
+      table.cell(tbl, 1, 1, pat_str(p1),   text_color=color.white, text_size=size.small)                                                                              
+      table.cell(tbl, 0, 2, i_htf2 + h2d, text_color=dir_col(htf2_o, htf2_c), text_size=size.small)                                                                   
+      table.cell(tbl, 1, 2, pat_str(p2),   text_color=color.white, text_size=size.small)                                                                              
+                                                                                                                                                                      
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  // ALERTS                                                                                                                                                           
+  // ══════════════════════════════════════════════════════════════                                                                                                   
+  alertcondition(disp_breaks_bull, "Bull Шилжүүлэгч", "Bullish шилжүүлэгч - бүс эвдэгдлээ")                                                                           
+  alertcondition(disp_breaks_bear, "Bear Шилжүүлэгч", "Bearish шилжүүлэгч - бүс эвдэгдлээ")                                                                           
+  alertcondition(active_pattern == 1, "Загвар 1", "PB Загвар 1")                                                                                                      
+  alertcondition(active_pattern == 2, "Загвар 2", "PB Загвар 2")                         
+  alertcondition(active_pattern == 3, "Загвар 3", "PB Загвар 3")  
