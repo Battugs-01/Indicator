@@ -1,5 +1,5 @@
-// © Battugs - Degi Fractal Structure v10
-// Бүс → Шилжүүлэгч (олон лааны impulse) → Fibo 0,1,2
+// © Battugs - Degi Fractal Structure v11
+// Бүс → Шилжүүлэгч (олон лааны impulse) → PB загвар (1р/2р/3р) → Entry
 
 //@version=5
 indicator("Degi Fractal Structure", "DFS", overlay=true, max_boxes_count=50, max_lines_count=200, max_labels_count=100)
@@ -16,8 +16,10 @@ i_max_range  = input.float(5.0, "Бүс max range (ATR x)", minval=2.0, maxval=1
 i_cooldown   = input.int(20, "Cooldown (bars)", minval=5, maxval=50, group=g1)
 
 var g2 = "Multi-Timeframe"
-i_htf1 = input.timeframe("240", "HTF 1", group=g2)
-i_htf2 = input.timeframe("D", "HTF 2", group=g2)
+i_htf1 = input.timeframe("30", "30 min", group=g2)
+i_htf2 = input.timeframe("60", "1H", group=g2)
+i_htf3 = input.timeframe("240", "4H", group=g2)
+i_htf4 = input.timeframe("D", "Daily", group=g2)
 
 var g3 = "Өнгө"
 i_col_zone = input.color(color.new(#787b86, 80), "Бүс", group=g3)
@@ -29,11 +31,17 @@ i_col_fibo = input.color(#363a45, "Fibo", group=g3)
 atr_val   = ta.atr(i_atr_len)
 body_size = math.abs(close - open)
 
-// Өмнөх N барын range
 prev_hi = ta.highest(high[1], i_lookback)
 prev_lo = ta.lowest(low[1], i_lookback)
 prev_range = prev_hi - prev_lo
 was_ranging = prev_range < atr_val * i_max_range
+
+// Глобал scope дээр дуудах (Pine Script шаардлага)
+_local_range_5 = ta.highest(high, 5) - ta.lowest(low, 5)
+_local_hi_5 = ta.highest(high, 5)
+_local_lo_5 = ta.lowest(low, 5)
+_recent_hi_5 = ta.highest(high, 5)[1]
+_recent_lo_5 = ta.lowest(low, 5)[1]
 
 var int last_signal_bar = 0
 in_cooldown = bar_index - last_signal_bar < i_cooldown
@@ -41,400 +49,317 @@ in_cooldown = bar_index - last_signal_bar < i_cooldown
 // ══════════════════════════════════════════════════════════════
 // ШИЛЖҮҮЛЭГЧ TRACKING
 // ══════════════════════════════════════════════════════════════
-// 1. Том лаа range-г эвдэхэд tracking эхэлнэ
-// 2. Нэг чиглэлийн лаанууд үргэлжлэх тусам extreme шинэчлэнэ
-// 3. Эсрэг чиглэлийн лаа гарахад → displacement дуусна → fibo зурна
+var int   track_state      = 0
+var float track_extreme    = na
+var float track_zone_hi    = na
+var float track_zone_lo    = na
+var int   track_start      = 0
+var int   track_zone_start = 0
 
-var int   track_state   = 0     // 0=хайж байна, 1=bull tracking, -1=bear tracking
-var float track_extreme = na    // Хөдөлгөөний extreme (highest high / lowest low)
-var float track_zone_hi = na    // Бүсийн high
-var float track_zone_lo = na    // Бүсийн low
-var int   track_start   = 0     // Tracking эхэлсэн bar
-var int   track_zone_start = 0  // Бүс эхэлсэн bar
+// PB + Entry state
+var int   active_pattern   = 0
+var int   disp_dir         = 0
+var float disp_extreme     = na
+var float disp_zone_lo     = na   // Шилжүүлэгчийн бүсийн утгууд хадгалах
+var float disp_zone_hi     = na
+var int   bars_since_disp  = 0
+var bool  pb_started       = false
+var int   prev_cd          = 0
+var label pb_label         = na
 
-// PB state
-var int   active_pattern  = 0
-var int   disp_dir        = 0
-var float disp_extreme    = na
-var int   bars_since_disp = 0
-var bool  pb_started      = false
-var int   pb_count        = 0
-var int   prev_cd         = 0
-var label pb_label        = na
+// PB дотоод бүтэц
+var int   pb_start_bar     = 0
+var int   pb_waves         = 0
+var int   pb_wave_dir      = 0
+var float pb_swing_hi      = na
+var float pb_swing_lo      = na
+var float pb_deepest       = na
+// PB дотоод Fractal (1р загварт)
+var bool  pb_inner_ranging = false
+var bool  pb_inner_disp    = false
+var bool  pb_inner_pb_done = false
+var int   pb_inner_range_bars = 0
+var float pb_inner_range_hi = na
+var float pb_inner_range_lo = na
+// PB давалгааны хэмжээ (3р загварт)
+var float pb_w1 = 0.0
+var float pb_w2 = 0.0
+var float pb_w3 = 0.0
+var float pb_w_start = na
 
 if disp_dir != 0
     bars_since_disp += 1
 
-// ── Tracking эхлүүлэх: том лаа range-г эвдсэн ──
+// Tracking эхлүүлэх
 is_big_bull = body_size > atr_val * i_disp_mult and close > open
 is_big_bear = body_size > atr_val * i_disp_mult and close < open
 
 if track_state == 0 and not in_cooldown
-    // Bullish breakout
     if is_big_bull and was_ranging and close > prev_hi
-        track_state     := 1
-        track_extreme   := high
-        track_zone_hi   := prev_hi
-        track_zone_lo   := prev_lo
-        track_start     := bar_index
+        track_state      := 1
+        track_extreme    := high
+        track_zone_hi    := prev_hi
+        track_zone_lo    := prev_lo
+        track_start      := bar_index
         track_zone_start := bar_index - i_lookback
 
-    // Bearish breakout
     if is_big_bear and was_ranging and close < prev_lo
-        track_state     := -1
-        track_extreme   := low
-        track_zone_hi   := prev_hi
-        track_zone_lo   := prev_lo
-        track_start     := bar_index
+        track_state      := -1
+        track_extreme    := low
+        track_zone_hi    := prev_hi
+        track_zone_lo    := prev_lo
+        track_start      := bar_index
         track_zone_start := bar_index - i_lookback
 
-// ── Tracking үргэлжлүүлэх: нэг чиглэлд явж байвал extreme шинэчлэх ──
-// ── Эсрэг лаа гарвал → дууссан → fibo зурах ──
-
-// Fibo зурах функц
+// Fibo зурах
 draw_fibo(pt_0, pt_2, b_start) =>
     pt_1 = (pt_0 + pt_2) / 2
     b_end = b_start + i_fib_ext
-
     line.new(b_start, pt_0, b_end, pt_0, color=i_col_fibo, width=2)
-    label.new(b_start - 1, pt_0, "0 ", style=label.style_label_right,
-      color=color.new(color.white, 100), textcolor=i_col_fibo, size=size.small)
-
+    label.new(b_start - 1, pt_0, "0 ", style=label.style_label_right, color=color.new(color.white, 100), textcolor=i_col_fibo, size=size.small)
     line.new(b_start, pt_1, b_end, pt_1, color=i_col_fibo, width=2)
-    label.new(b_start - 1, pt_1, "1 ", style=label.style_label_right,
-      color=color.new(color.white, 100), textcolor=i_col_fibo, size=size.small)
-
+    label.new(b_start - 1, pt_1, "1 ", style=label.style_label_right, color=color.new(color.white, 100), textcolor=i_col_fibo, size=size.small)
     line.new(b_start, pt_2, b_end, pt_2, color=i_col_fibo, width=2)
-    label.new(b_start - 1, pt_2, "2 ", style=label.style_label_right,
-      color=color.new(color.white, 100), textcolor=i_col_fibo, size=size.small)
-
+    label.new(b_start - 1, pt_2, "2 ", style=label.style_label_right, color=color.new(color.white, 100), textcolor=i_col_fibo, size=size.small)
     pt_1
 
-// ══════════════════════════════════════════════════════════════
-// ШИЛЖҮҮЛЭГЧИЙН БАТАЛГАА ШАЛГАХ (Fractal OT)
-// ══════════════════════════════════════════════════════════════
-// 1. Шилжүүлэгч үндсэн хэмжээнээсээ (0-1) урт байх ёстой
-// 2. Огцом байх ёстой (цөөн барт явсан)
-// 3. Дундах цэгийг 30%-с илүү эвдээгүй байх
-// 4. Дунд нь consolidation байхгүй
-
+// Шилжүүлэгч баталгаа
 validate_disp(zone_edge, extreme, zone_range, bars_used) =>
     disp_range = math.abs(extreme - zone_edge)
-    // 1. Урт байна уу: шилжүүлэгч >= үндсэн хэмжээ (бүсийн range)
-    valid_length = disp_range >= zone_range
-    // 2. Огцом байна уу: 10 барнаас бага
-    valid_speed = bars_used <= 10
-    // 3. Хэт богино биш: ядаж бүсийн 50%-с урт
-    valid_min = disp_range >= zone_range * 0.5
-    valid_length and valid_speed and valid_min
+    disp_range >= zone_range and bars_used <= 10 and disp_range >= zone_range * 0.5
 
-// ── BULLISH tracking ──
+// ══════════════════════════════════════════════════════════════
+// BULLISH TRACKING
+// ══════════════════════════════════════════════════════════════
 if track_state == 1
-    // Extreme шинэчлэх
     track_extreme := math.max(track_extreme, high)
-    // Дуусах шалгуур: эсрэг лаа БҮТЭН БИЕЭР хаагдсан
-    // (sweep = wick доошоо гарсан ч close дээр хаагдсан бол үргэлжилнэ)
-    bull_body_close = math.min(open, close)  // Лааны биеийн доод хэсэг
-    prev_body_low = math.min(open[1], close[1])
-    is_full_body_reversal = close < open and bull_body_close < prev_body_low
-    if is_full_body_reversal
-        // Шилжүүлэгч дууслаа — баталгаа шалгах
+    // Дуусах: бүтэн биеэр эсрэг хаагдсан (sweep = үргэлжилнэ)
+    body_lo = math.min(open, close)
+    prev_body_lo = math.min(open[1], close[1])
+    full_reversal = close < open and body_lo < prev_body_lo
+    if full_reversal
         zone_range = track_zone_hi - track_zone_lo
         bars_used = bar_index - track_start
-        is_valid = validate_disp(track_zone_lo, track_extreme, zone_range, bars_used)
-
-        if is_valid
-            box.new(track_zone_start, track_zone_hi, track_start, track_zone_lo,
-              bgcolor=i_col_zone, border_color=color.new(#787b86, 40), border_width=1)
+        if validate_disp(track_zone_lo, track_extreme, zone_range, bars_used)
+            box.new(track_zone_start, track_zone_hi, track_start, track_zone_lo, bgcolor=i_col_zone, border_color=color.new(#787b86, 40), border_width=1)
             draw_fibo(track_zone_lo, track_extreme, bar_index)
-
-            disp_dir        := 1
-            disp_extreme    := track_extreme
+            disp_dir       := 1
+            disp_extreme   := track_extreme
+            disp_zone_lo   := track_zone_lo
+            disp_zone_hi   := track_zone_hi
             bars_since_disp := 0
-            pb_started      := false
-            pb_count        := 0
-            active_pattern  := 0
+            pb_started     := false
+            active_pattern := 0
             last_signal_bar := bar_index
-            pb_label        := na
+            pb_label       := na
         else
-            // Баталгаа хангаагүй → бүх state reset
-            disp_dir        := 0
-            pb_started      := false
-            active_pattern  := 0
+            disp_dir       := 0
+            pb_started     := false
+            active_pattern := 0
             last_signal_bar := bar_index
-            pb_label        := na
-
+            pb_label       := na
         track_state := 0
 
-// ── BEARISH tracking ──
+// ══════════════════════════════════════════════════════════════
+// BEARISH TRACKING
+// ══════════════════════════════════════════════════════════════
 if track_state == -1
     track_extreme := math.min(track_extreme, low)
-    // Эсрэг лаа БҮТЭН БИЕЭР хаагдсан
-    bear_body_close = math.max(open, close)
-    prev_body_high = math.max(open[1], close[1])
-    is_full_body_reversal = close > open and bear_body_close > prev_body_high
-    if is_full_body_reversal
+    body_hi = math.max(open, close)
+    prev_body_hi = math.max(open[1], close[1])
+    full_reversal = close > open and body_hi > prev_body_hi
+    if full_reversal
         zone_range = track_zone_hi - track_zone_lo
         bars_used = bar_index - track_start
-        is_valid = validate_disp(track_zone_hi, track_extreme, zone_range, bars_used)
-
-        if is_valid
-            box.new(track_zone_start, track_zone_hi, track_start, track_zone_lo,
-              bgcolor=i_col_zone, border_color=color.new(#787b86, 40), border_width=1)
+        if validate_disp(track_zone_hi, track_extreme, zone_range, bars_used)
+            box.new(track_zone_start, track_zone_hi, track_start, track_zone_lo, bgcolor=i_col_zone, border_color=color.new(#787b86, 40), border_width=1)
             draw_fibo(track_zone_hi, track_extreme, bar_index)
-
-            disp_dir        := -1
-            disp_extreme    := track_extreme
+            disp_dir       := -1
+            disp_extreme   := track_extreme
+            disp_zone_lo   := track_zone_lo
+            disp_zone_hi   := track_zone_hi
             bars_since_disp := 0
-            pb_started      := false
-            pb_count        := 0
-            active_pattern  := 0
+            pb_started     := false
+            active_pattern := 0
             last_signal_bar := bar_index
-            pb_label        := na
+            pb_label       := na
         else
-            // Баталгаа хангаагүй → бүх state reset
-            disp_dir        := 0
-            pb_started      := false
-            active_pattern  := 0
+            disp_dir       := 0
+            pb_started     := false
+            active_pattern := 0
             last_signal_bar := bar_index
-            pb_label        := na
-
+            pb_label       := na
         track_state := 0
 
 // ══════════════════════════════════════════════════════════════
-// PB ЗАГВАР ТОДОРХОЙЛОХ + ENTRY SIGNAL
+// PB ЗАГВАР + ENTRY
 // ══════════════════════════════════════════════════════════════
-// PB ЗАГВАР — БҮТЦЭЭР ЯЛГАХ:
-// 2р: давалгаа ≤ 2, V хэлбэр (шууд гүн ороод буцсан)
-// 1р: PB дотроо бүтэн Fractal (impulse→PB→шилжүүлэгч→PB→impulse)
-// 3р: 3 давалгаа, 3-р нь 1р загварын бүтэцтэй
-
-var float disp_mid      = na
-var int   pb_start_bar  = 0
-var float pb_swing_hi   = na
-var float pb_swing_lo   = na
-var int   pb_wave_dir   = 0
-var int   pb_waves      = 0
-// PB дотоод Fractal бүтэц хянах
-var float pb_inner_hi   = na    // PB дотоод swing high
-var float pb_inner_lo   = na    // PB дотоод swing low
-var bool  pb_inner_range = false // PB дотроо range үүссэн үү
-var bool  pb_inner_break = false // PB дотроо range эвдсэн үү (шилжүүлэгч)
-var bool  pb_inner_pb    = false // PB дотоод шилжүүлэгчийн дараа PB ирсэн үү
-// Давалгааны хэмжээ (3р загварт)
-var float pb_w1_size    = 0.0
-var float pb_w2_size    = 0.0
-var float pb_w3_size    = 0.0
-var float pb_w_start    = na
+// 2р (candle-butesh3): V хэлбэр, дотроо бүтэц байхгүй, шууд sharp reversal
+// 1р (candle-butesh2): PB дотроо бүтэн Fractal (range → шилжүүлэгч → PB → impulse)
+// 3р (candle-butesh):  3 давалгаа, 3-р нь 1р загварын бүтэцтэй
+//
+// ЯЛГАХ АРГА: Бүтцээр — bar тоогоор биш!
+// 2р = дотроо range ч, шилжүүлэгч ч үүсэхгүй, зүгээр V
+// 1р = PB дотроо range үүсч + тэр range-г PB чиглэлд шилжүүлэгч эвдэж + дараа нь буцсан
+// 3р = 3+ давалгаа ба давалгаа дотроо 1р бүтэц олдсон
 
 if disp_dir != 0 and bars_since_disp > 0 and active_pattern == 0
     cur_cd = close > open ? 1 : -1
+    disp_mid = disp_dir == 1 ? (disp_zone_lo + disp_extreme) / 2 : (disp_zone_hi + disp_extreme) / 2
 
-    if disp_dir == 1
-        disp_mid := (track_zone_lo + disp_extreme) / 2
+    // ── PB эхлэх ──
+    if not pb_started
+        pb_trigger = disp_dir == 1 ? (close < open) : (close > open)
+        if pb_trigger
+            pb_started         := true
+            pb_start_bar       := bar_index
+            pb_swing_hi        := high
+            pb_swing_lo        := low
+            pb_deepest         := disp_dir == 1 ? low : high
+            pb_waves           := 1
+            pb_wave_dir        := -disp_dir
+            pb_inner_ranging   := false
+            pb_inner_disp      := false
+            pb_inner_pb_done   := false
+            pb_inner_range_bars := 0
+            pb_inner_range_hi  := na
+            pb_inner_range_lo  := na
+            pb_w1 := 0.0
+            pb_w2 := 0.0
+            pb_w3 := 0.0
+            pb_w_start := close
 
-        if not pb_started and close < open
-            pb_started      := true
-            pb_start_bar    := bar_index
-            pb_swing_hi     := high
-            pb_swing_lo     := low
-            pb_waves        := 1
-            pb_wave_dir     := -1
-            pb_inner_hi     := high
-            pb_inner_lo     := low
-            pb_inner_range  := false
-            pb_inner_break  := false
-            pb_inner_pb     := false
-            pb_w1_size      := 0.0
-            pb_w2_size      := 0.0
-            pb_w3_size      := 0.0
-            pb_w_start      := close
+    // PB байхгүй
+    if not pb_started and bars_since_disp > 10
+        active_pattern := 0
+        disp_dir := 0  // Reset, шинэ бүтэц хайна
 
-        if not pb_started and bars_since_disp > 8
-            active_pattern := 2
-            label.new(bar_index, low - atr_val * 0.3, "PB байхгүй",
-              style=label.style_label_up, color=color.new(#787b86, 0),
-              textcolor=color.white, size=size.small)
+    // ── PB идэвхитэй ──
+    if pb_started and active_pattern == 0
+        pb_swing_hi := math.max(pb_swing_hi, high)
+        pb_swing_lo := math.min(pb_swing_lo, low)
+        if disp_dir == 1 and low < pb_deepest
+            pb_deepest := low
+        if disp_dir == -1 and high > pb_deepest
+            pb_deepest := high
 
-        if pb_started and active_pattern == 0
-            pb_swing_hi := math.max(pb_swing_hi, high)
-            pb_swing_lo := math.min(pb_swing_lo, low)
-
-            // Давалгаа тоолох + хэмжээ хадгалах
-            if cur_cd != pb_wave_dir and pb_wave_dir != 0
-                w_size = math.abs(close - pb_w_start)
-                if pb_waves == 1
-                    pb_w1_size := w_size
-                else if pb_waves == 2
-                    pb_w2_size := w_size
-                else if pb_waves == 3
-                    pb_w3_size := w_size
-                pb_waves += 1
-                pb_w_start := close
+        // Давалгаа тоолох — зөвхөн ТОДОРХОЙ хэмжээний лааг тооцно
+        // Жижиг doji, жижиг эсрэг лаа = давалгаа биш
+        is_significant = body_size > atr_val * 0.3
+        if cur_cd != pb_wave_dir and pb_wave_dir != 0 and is_significant
+            w_sz = math.abs(close - pb_w_start)
+            if pb_waves == 1
+                pb_w1 := w_sz
+            else if pb_waves == 2
+                pb_w2 := w_sz
+            else if pb_waves >= 3
+                pb_w3 := w_sz
+            pb_waves += 1
+            pb_w_start := close
+        if is_significant
             pb_wave_dir := cur_cd
 
-            // ── PB дотоод Fractal бүтэц хянах (1р загварт) ──
-            // Range: PB дотор ханш нарийн хүрээнд хөдөлсөн
-            pb_recent_range = ta.highest(high, 4) - ta.lowest(low, 4)
-            if pb_recent_range < atr_val * 3 and pb_waves >= 2
-                pb_inner_range := true
-            // Дотоод шилжүүлэгч: range эвдэгдсэн + БАТАЛГААТАЙ
-            // 1. Том лаа (body > ATR*0.8)
-            // 2. Тэр лаа PB-н чиглэлд явсан (bull PB үед = bear лаа = доошоо)
-            // 3. Inner range-с УРУТ байх
-            inner_is_disp_dir = cur_cd == -1  // Bull displacement → PB доошоо → дотоод шилжүүлэгч доошоо
-            inner_break_valid = body_size > atr_val * 0.8 and body_size > pb_recent_range * 0.5 and inner_is_disp_dir
-            if pb_inner_range and inner_break_valid and not pb_inner_break
-                pb_inner_break := true
-            // Дотоод PB: шилжүүлэгчийн дараа ЭСРЭГ чиглэлийн лаа (bull)
-            if pb_inner_break and cur_cd == 1
-                pb_inner_pb := true
+        pb_bars = bar_index - pb_start_bar
 
-            // ── ЗАГВАР ТОДОРХОЙЛОХ ──
-            // 2р: давалгаа ≤ 3 (V хэлбэр, зөөлрүүлсэн)
-            // 1р: PB дотроо Fractal бүтэц олдсон
-            // 3р: 4+ давалгаа, Fractal бүтэц олдоогүй
-            is_pat2 = pb_waves <= 3
-            is_pat1 = pb_inner_range and pb_inner_break
-            is_pat3 = pb_waves >= 4 and not is_pat1
+        // ── PB дотоод Fractal бүтэц хянах (1р загварт) ──
+        // 1. Range: PB дотор ханш нарийхан range-д хөдөлж байна уу
+        pb_local_range = _local_range_5
+        if pb_local_range < atr_val * 2.5 and pb_waves >= 2 and not pb_inner_ranging
+            pb_inner_ranging   := true
+            pb_inner_range_bars := 0
+            pb_inner_range_hi  := _local_hi_5
+            pb_inner_range_lo  := _local_lo_5
 
-            cur_pat = is_pat2 ? 2 : is_pat1 ? 1 : is_pat3 ? 3 : 0
-            pat_txt = cur_pat == 2 ? "? 2р" : cur_pat == 1 ? "? 1р" : cur_pat == 3 ? "? 3р" : "? PB"
-            pb_bars = bar_index - pb_start_bar
-            tip_txt = "Загвар: " + str.tostring(cur_pat) + "р\nДавалгаа: " + str.tostring(pb_waves) + "\nБар: " + str.tostring(pb_bars) + "\nДотоод range: " + (pb_inner_range ? "✓" : "✗") + "\nДотоод break: " + (pb_inner_break ? "✓" : "✗") + "\nДотоод PB: " + (pb_inner_pb ? "✓" : "✗")
+        // Range баталгаажуулах (3+ бар range дотор)
+        if pb_inner_ranging and not pb_inner_disp
+            pb_inner_range_bars += 1
 
-            if na(pb_label)
-                pb_label := label.new(bar_index, pb_swing_lo - atr_val * 0.3, pat_txt,
-                  style=label.style_label_up, color=color.new(#2962ff, 60),
-                  textcolor=color.white, size=size.small, tooltip=tip_txt)
-            else
+        // 2. Дотоод шилжүүлэгч: range-г PB-н ЧИГЛЭЛД бүтэн биеэр эвдсэн
+        if pb_inner_ranging and not pb_inner_disp and pb_inner_range_bars >= 3
+            if disp_dir == 1  // Bull displacement → PB доошоо → дотоод шилжүүлэгч ДООШОО
+                inner_range_sz = nz(pb_inner_range_hi) - nz(pb_inner_range_lo)
+                if close < open and body_size > inner_range_sz * 0.4 and close < nz(pb_inner_range_lo)
+                    pb_inner_disp := true
+            else  // Bear displacement → PB дээшээ → дотоод шилжүүлэгч ДЭЭШЭЭ
+                inner_range_sz = nz(pb_inner_range_hi) - nz(pb_inner_range_lo)
+                if close > open and body_size > inner_range_sz * 0.4 and close > nz(pb_inner_range_hi)
+                    pb_inner_disp := true
+
+        // 3. Дотоод PB: дотоод шилжүүлэгчийн дараа ЭСРЭГ лаа хаагдсан
+        if pb_inner_disp and not pb_inner_pb_done
+            if disp_dir == 1 and close > open   // Bull лаа = дотоод PB
+                pb_inner_pb_done := true
+            if disp_dir == -1 and close < open
+                pb_inner_pb_done := true
+
+        // ── ЗАГВАР ТОДОРХОЙЛОХ ──
+        has_fractal = pb_inner_ranging and pb_inner_disp  // Дотроо Fractal бүтэц
+        is_pat1 = has_fractal
+        is_pat2 = not has_fractal and pb_waves <= 3
+        is_pat3 = not has_fractal and pb_waves >= 4
+
+        cur_pat = is_pat1 ? 1 : is_pat2 ? 2 : is_pat3 ? 3 : 0
+        pat_txt = cur_pat == 1 ? "? 1р" : cur_pat == 2 ? "? 2р" : cur_pat == 3 ? "? 3р" : "? PB"
+        tip_txt = "Загвар: " + str.tostring(cur_pat) + "р | Бар: " + str.tostring(pb_bars) + "\nДавалгаа: " + str.tostring(pb_waves) + "\nДотоод range: " + (pb_inner_ranging ? "✓" : "✗") + " | Шилжүүлэгч: " + (pb_inner_disp ? "✓" : "✗") + " | PB: " + (pb_inner_pb_done ? "✓" : "✗")
+
+        lbl_y = disp_dir == 1 ? pb_swing_lo - atr_val * 0.3 : pb_swing_hi + atr_val * 0.3
+        lbl_style = disp_dir == 1 ? label.style_label_up : label.style_label_down
+
+        if na(pb_label)
+            pb_label := label.new(bar_index, lbl_y, pat_txt, style=lbl_style, color=color.new(#2962ff, 60), textcolor=color.white, size=size.small, tooltip=tip_txt)
+        else
+            label.set_x(pb_label, bar_index)
+            label.set_y(pb_label, lbl_y)
+            label.set_text(pb_label, pat_txt)
+            label.set_tooltip(pb_label, tip_txt)
+
+        // ── ENTRY ──
+        // Entry = PB дууссан = шилжүүлэгчийн чиглэлд буцсан
+        // Шалгуур: сүүлийн 5 барын swing-г эвдсэн + тухайн чиглэлийн лаа
+        entry_ok = false
+
+        if disp_dir == 1
+            recent_swing = _recent_hi_5
+            if close > recent_swing and close > open
+                // 2р: Fractal бүтэц байхгүй, V буцсан
+                if is_pat2
+                    entry_ok := true
+                    active_pattern := 2
+                // 1р: Дотоод Fractal дуусаж inner PB буцсан
+                if is_pat1 and pb_inner_pb_done
+                    entry_ok := true
+                    active_pattern := 1
+                // 3р: 4+ давалгааны дараа буцсан
+                if is_pat3
+                    entry_ok := true
+                    active_pattern := 3
+
+        if disp_dir == -1
+            recent_swing = _recent_lo_5
+            if close < recent_swing and close < open
+                if is_pat2
+                    entry_ok := true
+                    active_pattern := 2
+                if is_pat1 and pb_inner_pb_done
+                    entry_ok := true
+                    active_pattern := 1
+                if is_pat3
+                    entry_ok := true
+                    active_pattern := 3
+
+        if entry_ok
+            e_col = disp_dir == 1 ? color.new(#089981, 0) : color.new(#f23645, 0)
+            e_arrow = disp_dir == 1 ? "▲" : "▼"
+            e_txt = str.tostring(active_pattern) + "р загвар " + e_arrow + " ENTRY"
+            e_tip = "Загвар: " + str.tostring(active_pattern) + "р\nДавалгаа: " + str.tostring(pb_waves) + " | Бар: " + str.tostring(pb_bars) + "\n" + (active_pattern == 1 ? "Fractal бүтэц: range→шилжүүлэгч→PB дууссан" : active_pattern == 2 ? "V хэлбэр: шууд гүн ороод буцсан" : "3 давалгаа дуусгасан")
+            e_y = disp_dir == 1 ? low - atr_val * 0.5 : high + atr_val * 0.5
+            if not na(pb_label)
+                label.set_text(pb_label, e_txt)
+                label.set_color(pb_label, e_col)
+                label.set_tooltip(pb_label, e_tip)
                 label.set_x(pb_label, bar_index)
-                label.set_y(pb_label, pb_swing_lo - atr_val * 0.3)
-                label.set_text(pb_label, pat_txt)
-                label.set_tooltip(pb_label, tip_txt)
-
-            // ── ENTRY ──
-            recent_hi = ta.highest(high, 3)[1]
-            pb_reversal = close > recent_hi and close > open
-
-            entry_ok = false
-            if is_pat2 and pb_reversal
-                entry_ok := true
-                active_pattern := 2
-            if is_pat1 and pb_inner_pb and pb_reversal
-                entry_ok := true
-                active_pattern := 1
-            if is_pat3 and pb_reversal and pb_waves >= 4
-                entry_ok := true
-                active_pattern := 3
-
-            if entry_ok
-                e_txt = str.tostring(active_pattern) + "р загвар ▲ ENTRY"
-                e_tip = "Загвар: " + str.tostring(active_pattern) + "р\nДавалгаа: " + str.tostring(pb_waves) + " | Бар: " + str.tostring(pb_bars) + "\n" + (active_pattern == 2 ? "V хэлбэр: шууд гүн ороод буцсан" : active_pattern == 1 ? "Fractal бүтэц: дотроо range→break→PB" : "3 давалгаа: жижиг→дунд→том")
-                if not na(pb_label)
-                    label.set_text(pb_label, e_txt)
-                    label.set_color(pb_label, color.new(#089981, 0))
-                    label.set_tooltip(pb_label, e_tip)
-                    label.set_x(pb_label, bar_index)
-                    label.set_y(pb_label, low - atr_val * 0.5)
-                pb_label := na
-
-    else if disp_dir == -1
-        disp_mid := (track_zone_hi + disp_extreme) / 2
-
-        if not pb_started and close > open
-            pb_started      := true
-            pb_start_bar    := bar_index
-            pb_swing_hi     := high
-            pb_swing_lo     := low
-            pb_waves        := 1
-            pb_wave_dir     := 1
-            pb_inner_hi     := high
-            pb_inner_lo     := low
-            pb_inner_range  := false
-            pb_inner_break  := false
-            pb_inner_pb     := false
-            pb_w1_size      := 0.0
-            pb_w2_size      := 0.0
-            pb_w3_size      := 0.0
-            pb_w_start      := close
-
-        if not pb_started and bars_since_disp > 8
-            active_pattern := 2
-            label.new(bar_index, high + atr_val * 0.3, "PB байхгүй",
-              style=label.style_label_down, color=color.new(#787b86, 0),
-              textcolor=color.white, size=size.small)
-
-        if pb_started and active_pattern == 0
-            pb_swing_hi := math.max(pb_swing_hi, high)
-            pb_swing_lo := math.min(pb_swing_lo, low)
-
-            if cur_cd != pb_wave_dir and pb_wave_dir != 0
-                w_size = math.abs(close - pb_w_start)
-                if pb_waves == 1
-                    pb_w1_size := w_size
-                else if pb_waves == 2
-                    pb_w2_size := w_size
-                else if pb_waves == 3
-                    pb_w3_size := w_size
-                pb_waves += 1
-                pb_w_start := close
-            pb_wave_dir := cur_cd
-
-            pb_recent_range = ta.highest(high, 4) - ta.lowest(low, 4)
-            if pb_recent_range < atr_val * 3 and pb_waves >= 2
-                pb_inner_range := true
-            // Bear displacement → PB дээшээ → дотоод шилжүүлэгч дээшээ
-            inner_is_disp_dir = cur_cd == 1
-            inner_break_valid = body_size > atr_val * 0.8 and body_size > pb_recent_range * 0.5 and inner_is_disp_dir
-            if pb_inner_range and inner_break_valid and not pb_inner_break
-                pb_inner_break := true
-            if pb_inner_break and cur_cd == -1
-                pb_inner_pb := true
-
-            is_pat2 = pb_waves <= 3
-            is_pat1 = pb_inner_range and pb_inner_break
-            is_pat3 = pb_waves >= 4 and not is_pat1
-
-            cur_pat = is_pat2 ? 2 : is_pat1 ? 1 : is_pat3 ? 3 : 0
-            pat_txt = cur_pat == 2 ? "? 2р" : cur_pat == 1 ? "? 1р" : cur_pat == 3 ? "? 3р" : "? PB"
-            pb_bars = bar_index - pb_start_bar
-            tip_txt = "Загвар: " + str.tostring(cur_pat) + "р\nДавалгаа: " + str.tostring(pb_waves) + "\nБар: " + str.tostring(pb_bars) + "\nДотоод range: " + (pb_inner_range ? "✓" : "✗") + "\nДотоод break: " + (pb_inner_break ? "✓" : "✗") + "\nДотоод PB: " + (pb_inner_pb ? "✓" : "✗")
-
-            if na(pb_label)
-                pb_label := label.new(bar_index, pb_swing_hi + atr_val * 0.3, pat_txt,
-                  style=label.style_label_down, color=color.new(#2962ff, 60),
-                  textcolor=color.white, size=size.small, tooltip=tip_txt)
-            else
-                label.set_x(pb_label, bar_index)
-                label.set_y(pb_label, pb_swing_hi + atr_val * 0.3)
-                label.set_text(pb_label, pat_txt)
-                label.set_tooltip(pb_label, tip_txt)
-
-            recent_lo = ta.lowest(low, 3)[1]
-            pb_reversal = close < recent_lo and close < open
-
-            entry_ok = false
-            if is_pat2 and pb_reversal
-                entry_ok := true
-                active_pattern := 2
-            if is_pat1 and pb_inner_pb and pb_reversal
-                entry_ok := true
-                active_pattern := 1
-            if is_pat3 and pb_reversal and pb_waves >= 4
-                entry_ok := true
-                active_pattern := 3
-
-            if entry_ok
-                e_txt = str.tostring(active_pattern) + "р загвар ▼ ENTRY"
-                e_tip = "Загвар: " + str.tostring(active_pattern) + "р\nДавалгаа: " + str.tostring(pb_waves) + " | Бар: " + str.tostring(pb_bars) + "\n" + (active_pattern == 2 ? "V хэлбэр: шууд гүн ороод буцсан" : active_pattern == 1 ? "Fractal бүтэц: дотроо range→break→PB" : "3 давалгаа: жижиг→дунд→том")
-                if not na(pb_label)
-                    label.set_text(pb_label, e_txt)
-                    label.set_color(pb_label, color.new(#f23645, 0))
-                    label.set_tooltip(pb_label, e_tip)
-                    label.set_x(pb_label, bar_index)
-                    label.set_y(pb_label, high + atr_val * 0.5)
-                pb_label := na
+                label.set_y(pb_label, e_y)
+            pb_label := na
 
     prev_cd := cur_cd
 
@@ -457,23 +382,37 @@ htf2_o = request.security(syminfo.tickerid, i_htf2, open)
 htf2_h = request.security(syminfo.tickerid, i_htf2, high)
 htf2_l = request.security(syminfo.tickerid, i_htf2, low)
 htf2_c = request.security(syminfo.tickerid, i_htf2, close)
+htf3_o = request.security(syminfo.tickerid, i_htf3, open)
+htf3_h = request.security(syminfo.tickerid, i_htf3, high)
+htf3_l = request.security(syminfo.tickerid, i_htf3, low)
+htf3_c = request.security(syminfo.tickerid, i_htf3, close)
+htf4_o = request.security(syminfo.tickerid, i_htf4, open)
+htf4_h = request.security(syminfo.tickerid, i_htf4, high)
+htf4_l = request.security(syminfo.tickerid, i_htf4, low)
+htf4_c = request.security(syminfo.tickerid, i_htf4, close)
 
 p1 = detect_pattern(htf1_o, htf1_h, htf1_l, htf1_c)
 p2 = detect_pattern(htf2_o, htf2_h, htf2_l, htf2_c)
+p3 = detect_pattern(htf3_o, htf3_h, htf3_l, htf3_c)
+p4 = detect_pattern(htf4_o, htf4_h, htf4_l, htf4_c)
 
 pat_str(p) => p == 1 ? "1р загвар" : p == 2 ? "2р загвар" : "3р загвар"
 dir_col(o, c) => c > o ? #089981 : #f23645
+dir_str(o, c) => c > o ? " ▲" : " ▼"
 
-var table tbl = table.new(position.top_right, 2, 3,
-  bgcolor=color.new(#1e1e1e, 5), border_width=1, border_color=color.new(color.gray, 70))
+var table tbl = table.new(position.top_right, 2, 5, bgcolor=color.new(#1e1e1e, 5), border_width=1, border_color=color.new(color.gray, 70))
 
 if barstate.islast
     table.cell(tbl, 0, 0, "Цаг", text_color=color.gray, text_size=size.small)
     table.cell(tbl, 1, 0, "Лааны бүтэц", text_color=color.gray, text_size=size.small)
-    table.cell(tbl, 0, 1, i_htf1 + (htf1_c > htf1_o ? " ▲" : " ▼"), text_color=dir_col(htf1_o, htf1_c), text_size=size.small)
+    table.cell(tbl, 0, 1, "30m" + dir_str(htf1_o, htf1_c), text_color=dir_col(htf1_o, htf1_c), text_size=size.small)
     table.cell(tbl, 1, 1, pat_str(p1), text_color=color.white, text_size=size.small)
-    table.cell(tbl, 0, 2, i_htf2 + (htf2_c > htf2_o ? " ▲" : " ▼"), text_color=dir_col(htf2_o, htf2_c), text_size=size.small)
+    table.cell(tbl, 0, 2, "1H" + dir_str(htf2_o, htf2_c), text_color=dir_col(htf2_o, htf2_c), text_size=size.small)
     table.cell(tbl, 1, 2, pat_str(p2), text_color=color.white, text_size=size.small)
+    table.cell(tbl, 0, 3, "4H" + dir_str(htf3_o, htf3_c), text_color=dir_col(htf3_o, htf3_c), text_size=size.small)
+    table.cell(tbl, 1, 3, pat_str(p3), text_color=color.white, text_size=size.small)
+    table.cell(tbl, 0, 4, "D" + dir_str(htf4_o, htf4_c), text_color=dir_col(htf4_o, htf4_c), text_size=size.small)
+    table.cell(tbl, 1, 4, pat_str(p4), text_color=color.white, text_size=size.small)
 
-alertcondition(track_state == 1 and track_state[1] == 0, "Bull Шилжүүлэгч эхэлсэн", "Bullish шилжүүлэгч")
-alertcondition(track_state == -1 and track_state[1] == 0, "Bear Шилжүүлэгч эхэлсэн", "Bearish шилжүүлэгч")
+alertcondition(track_state == 1 and track_state[1] == 0, "Bull Шилжүүлэгч", "Bullish шилжүүлэгч")
+alertcondition(track_state == -1 and track_state[1] == 0, "Bear Шилжүүлэгч", "Bearish шилжүүлэгч")
