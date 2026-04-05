@@ -240,6 +240,7 @@ if f_disp_dir != 0 and f_bars_since_disp > 0 and f_active_pattern == 0
                   style=label.style_label_up, color=color.new(#089981, 0),
                   textcolor=color.white, size=size.small,
                   tooltip="Fractal PB Entry\nЗагвар: " + str.tostring(f_active_pattern) + "р\nДавалгаа: " + str.tostring(f_pb_waves))
+                alert("🟢 FRACTAL BUY | " + str.tostring(f_active_pattern) + "р загвар | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
 
     else if f_disp_dir == -1
         if not f_pb_started and close > open
@@ -282,6 +283,7 @@ if f_disp_dir != 0 and f_bars_since_disp > 0 and f_active_pattern == 0
                   style=label.style_label_down, color=color.new(#f23645, 0),
                   textcolor=color.white, size=size.small,
                   tooltip="Fractal PB Entry\nЗагвар: " + str.tostring(f_active_pattern) + "р\nДавалгаа: " + str.tostring(f_pb_waves))
+                alert("🔴 FRACTAL SELL | " + str.tostring(f_active_pattern) + "р загвар | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
 
     f_prev_cd := cur_cd
 
@@ -411,6 +413,7 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
             lbl = conf ? "TBM ▲ ★" : "TBM ▲"
             col = conf ? color.new(#089981, 0) : color.new(#089981, 50)
             label.new(bar_index, low - atr_val * 0.5, lbl, style=label.style_label_up, color=col, textcolor=color.white, size=size.small, tooltip="TBM BUY | 61.8: " + str.tostring(f618, format.mintick) + (conf ? "\n✓ Уялдаа" : ""))
+            alert("🟢 TBM BUY | 61.8: " + str.tostring(f618, format.mintick) + (conf ? " ★ Уялдаа" : "") + " | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
             t_last_bar := bar_index
             t_last_price := close
             array.remove(t_618s, i)
@@ -423,6 +426,7 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
             lbl = conf ? "TBM ▼ ★" : "TBM ▼"
             col = conf ? color.new(#f23645, 0) : color.new(#f23645, 50)
             label.new(bar_index, high + atr_val * 0.5, lbl, style=label.style_label_down, color=col, textcolor=color.white, size=size.small, tooltip="TBM SELL | 61.8: " + str.tostring(f618, format.mintick) + (conf ? "\n✓ Уялдаа" : ""))
+            alert("🔴 TBM SELL | 61.8: " + str.tostring(f618, format.mintick) + (conf ? " ★ Уялдаа" : "") + " | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
             t_last_bar := bar_index
             t_last_price := close
             array.remove(t_618s, i)
