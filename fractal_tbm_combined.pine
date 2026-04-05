@@ -1,0 +1,487 @@
+// © Battugs - Fractal + TBM Combined Indicator
+// Fractal: Бүс → Шилжүүлэгч → PB загвар → Entry
+// TBM: MOM → Fibo 61.8 → Уялдаа → Entry
+// Live signal: ▲ ENTRY / ▼ ENTRY
+
+//@version=5
+indicator("Fractal + TBM", "F+T", overlay=true, max_boxes_count=50, max_lines_count=300, max_labels_count=150)
+
+// ══════════════════════════════════════════════════════════════
+// INPUTS
+// ══════════════════════════════════════════════════════════════
+var g1 = "Fractal"
+i_atr_len    = input.int(14, "ATR Length", group=g1)
+i_disp_mult  = input.float(1.5, "Шилжүүлэгч ATR x", minval=1.0, maxval=5.0, step=0.1, group=g1)
+i_fib_ext    = input.int(15, "Fractal Fibo урт", minval=3, maxval=50, group=g1)
+i_lookback   = input.int(20, "Бүс lookback", minval=5, maxval=60, group=g1)
+i_max_range  = input.float(5.0, "Бүс max range (ATR x)", minval=2.0, maxval=10.0, step=0.5, group=g1)
+i_cooldown   = input.int(20, "Cooldown (bars)", minval=5, maxval=50, group=g1)
+
+var g2 = "TBM"
+i_swing_len  = input.int(5, "Swing Length", group=g2)
+i_tbm_fib    = input.int(30, "TBM Fibo урт", minval=5, maxval=80, group=g2)
+i_max_fibs   = input.int(4, "Max TBM Fibo", minval=1, maxval=8, group=g2)
+i_conf_tol   = input.float(2.0, "Уялдаа tolerance (ATR x)", minval=0.5, maxval=5.0, step=0.5, group=g2)
+i_erliz_tol  = input.float(5.0, "Эрлийз threshold (ATR x)", minval=2.0, maxval=10.0, step=0.5, group=g2)
+
+var g3 = "MTF"
+i_htf1 = input.timeframe("30", "30m", group=g3)
+i_htf2 = input.timeframe("60", "1H", group=g3)
+i_htf3 = input.timeframe("240", "4H", group=g3)
+i_htf4 = input.timeframe("D", "Daily", group=g3)
+
+var g4 = "Өнгө"
+i_col_zone   = input.color(color.new(#787b86, 80), "Бүс", group=g4)
+i_col_frac   = input.color(#363a45, "Fractal Fibo", group=g4)
+i_col_tbm    = input.color(#000000, "TBM Fibo 0,1", group=g4)
+i_col_mom    = input.color(#ef5350, "MOM + 61.8", group=g4)
+
+// ══════════════════════════════════════════════════════════════
+// CORE
+// ══════════════════════════════════════════════════════════════
+atr_val   = ta.atr(i_atr_len)
+body_size = math.abs(close - open)
+
+prev_hi = ta.highest(high[1], i_lookback)
+prev_lo = ta.lowest(low[1], i_lookback)
+prev_range = prev_hi - prev_lo
+was_ranging = prev_range < atr_val * i_max_range
+
+_local_range_5 = ta.highest(high, 5) - ta.lowest(low, 5)
+_recent_hi_5 = ta.highest(high, 5)[1]
+_recent_lo_5 = ta.lowest(low, 5)[1]
+
+ph = ta.pivothigh(high, i_swing_len, i_swing_len)
+pl = ta.pivotlow(low, i_swing_len, i_swing_len)
+
+var float[] sh_p = array.new_float(0)
+var int[]   sh_b = array.new_int(0)
+var float[] sl_p = array.new_float(0)
+var int[]   sl_b = array.new_int(0)
+
+if not na(ph)
+    array.push(sh_p, ph)
+    array.push(sh_b, bar_index - i_swing_len)
+    if array.size(sh_p) > 30
+        array.shift(sh_p)
+        array.shift(sh_b)
+if not na(pl)
+    array.push(sl_p, pl)
+    array.push(sl_b, bar_index - i_swing_len)
+    if array.size(sl_p) > 30
+        array.shift(sl_p)
+        array.shift(sl_b)
+
+// ══════════════════════════════════════════════════════════════
+// ═══ FRACTAL: БҮС → ШИЛЖҮҮЛЭГЧ → PB ЗАГВАР ═══
+// ══════════════════════════════════════════════════════════════
+var int last_signal_bar = 0
+in_cooldown = bar_index - last_signal_bar < i_cooldown
+
+is_big_bull = body_size > atr_val * i_disp_mult and close > open
+is_big_bear = body_size > atr_val * i_disp_mult and close < open
+
+var int   track_state = 0
+var float track_extreme = na
+var float track_zone_hi = na
+var float track_zone_lo = na
+var int   track_start = 0
+var int   track_zone_start = 0
+
+var int   f_active_pattern = 0
+var int   f_disp_dir = 0
+var float f_disp_extreme = na
+var float f_disp_zone_lo = na
+var float f_disp_zone_hi = na
+var int   f_bars_since_disp = 0
+var bool  f_pb_started = false
+var int   f_prev_cd = 0
+var label f_pb_label = na
+
+if f_disp_dir != 0
+    f_bars_since_disp += 1
+
+// Tracking эхлүүлэх
+if track_state == 0 and not in_cooldown
+    if is_big_bull and was_ranging and close > prev_hi
+        track_state := 1
+        track_extreme := high
+        track_zone_hi := prev_hi
+        track_zone_lo := prev_lo
+        track_start := bar_index
+        track_zone_start := bar_index - i_lookback
+    if is_big_bear and was_ranging and close < prev_lo
+        track_state := -1
+        track_extreme := low
+        track_zone_hi := prev_hi
+        track_zone_lo := prev_lo
+        track_start := bar_index
+        track_zone_start := bar_index - i_lookback
+
+// Fibo
+f_draw_fibo(pt_0, pt_2, b_start) =>
+    pt_1 = (pt_0 + pt_2) / 2
+    b_end = b_start + i_fib_ext
+    line.new(b_start, pt_0, b_end, pt_0, color=i_col_frac, width=2)
+    label.new(b_start - 1, pt_0, "0 ", style=label.style_label_right, color=color.new(color.white, 100), textcolor=i_col_frac, size=size.small)
+    line.new(b_start, pt_1, b_end, pt_1, color=i_col_frac, width=2)
+    label.new(b_start - 1, pt_1, "1 ", style=label.style_label_right, color=color.new(color.white, 100), textcolor=i_col_frac, size=size.small)
+    line.new(b_start, pt_2, b_end, pt_2, color=i_col_frac, width=2)
+    label.new(b_start - 1, pt_2, "2 ", style=label.style_label_right, color=color.new(color.white, 100), textcolor=i_col_frac, size=size.small)
+    pt_1
+
+validate_disp(zone_edge, extreme, zone_range, bars_used) =>
+    disp_range = math.abs(extreme - zone_edge)
+    disp_range >= zone_range and bars_used <= 10 and disp_range >= zone_range * 0.5
+
+// Bull tracking
+if track_state == 1
+    track_extreme := math.max(track_extreme, high)
+    body_lo = math.min(open, close)
+    prev_body_lo = math.min(open[1], close[1])
+    if close < open and body_lo < prev_body_lo
+        zone_range = track_zone_hi - track_zone_lo
+        if validate_disp(track_zone_lo, track_extreme, zone_range, bar_index - track_start)
+            box.new(track_zone_start, track_zone_hi, track_start, track_zone_lo, bgcolor=i_col_zone, border_color=color.new(#787b86, 40), border_width=1)
+            f_draw_fibo(track_zone_lo, track_extreme, bar_index)
+            f_disp_dir := 1
+            f_disp_extreme := track_extreme
+            f_disp_zone_lo := track_zone_lo
+            f_disp_zone_hi := track_zone_hi
+            f_bars_since_disp := 0
+            f_pb_started := false
+            f_active_pattern := 0
+            last_signal_bar := bar_index
+            f_pb_label := na
+        else
+            f_disp_dir := 0
+            f_pb_started := false
+            f_active_pattern := 0
+            f_pb_label := na
+        track_state := 0
+
+// Bear tracking
+if track_state == -1
+    track_extreme := math.min(track_extreme, low)
+    body_hi = math.max(open, close)
+    prev_body_hi = math.max(open[1], close[1])
+    if close > open and body_hi > prev_body_hi
+        zone_range = track_zone_hi - track_zone_lo
+        if validate_disp(track_zone_hi, track_extreme, zone_range, bar_index - track_start)
+            box.new(track_zone_start, track_zone_hi, track_start, track_zone_lo, bgcolor=i_col_zone, border_color=color.new(#787b86, 40), border_width=1)
+            f_draw_fibo(track_zone_hi, track_extreme, bar_index)
+            f_disp_dir := -1
+            f_disp_extreme := track_extreme
+            f_disp_zone_lo := track_zone_lo
+            f_disp_zone_hi := track_zone_hi
+            f_bars_since_disp := 0
+            f_pb_started := false
+            f_active_pattern := 0
+            last_signal_bar := bar_index
+            f_pb_label := na
+        else
+            f_disp_dir := 0
+            f_pb_started := false
+            f_active_pattern := 0
+            f_pb_label := na
+        track_state := 0
+
+// PB загвар (энгийнчилсэн)
+var int f_pb_waves = 0
+var int f_pb_wave_dir = 0
+var int f_pb_start_bar = 0
+var float f_pb_swing_hi = na
+var float f_pb_swing_lo = na
+var bool f_pb_inner_ranging = false
+var bool f_pb_inner_disp = false
+
+if f_disp_dir != 0 and f_bars_since_disp > 0 and f_active_pattern == 0
+    cur_cd = close > open ? 1 : -1
+    is_sig = body_size > atr_val * 0.3
+
+    if f_disp_dir == 1
+        if not f_pb_started and close < open
+            f_pb_started := true
+            f_pb_start_bar := bar_index
+            f_pb_waves := 1
+            f_pb_wave_dir := -1
+            f_pb_swing_hi := high
+            f_pb_swing_lo := low
+            f_pb_inner_ranging := false
+            f_pb_inner_disp := false
+
+        if not f_pb_started and f_bars_since_disp > 10
+            f_disp_dir := 0
+
+        if f_pb_started and f_active_pattern == 0
+            f_pb_swing_hi := math.max(f_pb_swing_hi, high)
+            f_pb_swing_lo := math.min(f_pb_swing_lo, low)
+            if cur_cd != f_pb_wave_dir and f_pb_wave_dir != 0 and is_sig
+                f_pb_waves += 1
+            if is_sig
+                f_pb_wave_dir := cur_cd
+
+            pb_local = _local_range_5
+            if pb_local < atr_val * 2.5 and f_pb_waves >= 2
+                f_pb_inner_ranging := true
+            if f_pb_inner_ranging and body_size > atr_val * 0.8 and cur_cd == -1
+                f_pb_inner_disp := true
+
+            is_pat1 = f_pb_inner_ranging and f_pb_inner_disp
+            is_pat2 = not is_pat1 and f_pb_waves <= 3
+            is_pat3 = not is_pat1 and f_pb_waves >= 4
+            cur_pat = is_pat1 ? 1 : is_pat2 ? 2 : 3
+
+            recent_hi = _recent_hi_5
+            if close > recent_hi and close > open
+                f_active_pattern := cur_pat
+                e_txt = str.tostring(f_active_pattern) + "р загвар ▲ ENTRY"
+                label.new(bar_index, low - atr_val * 0.5, e_txt,
+                  style=label.style_label_up, color=color.new(#089981, 0),
+                  textcolor=color.white, size=size.small,
+                  tooltip="Fractal PB Entry\nЗагвар: " + str.tostring(f_active_pattern) + "р\nДавалгаа: " + str.tostring(f_pb_waves))
+
+    else if f_disp_dir == -1
+        if not f_pb_started and close > open
+            f_pb_started := true
+            f_pb_start_bar := bar_index
+            f_pb_waves := 1
+            f_pb_wave_dir := 1
+            f_pb_swing_hi := high
+            f_pb_swing_lo := low
+            f_pb_inner_ranging := false
+            f_pb_inner_disp := false
+
+        if not f_pb_started and f_bars_since_disp > 10
+            f_disp_dir := 0
+
+        if f_pb_started and f_active_pattern == 0
+            f_pb_swing_hi := math.max(f_pb_swing_hi, high)
+            f_pb_swing_lo := math.min(f_pb_swing_lo, low)
+            if cur_cd != f_pb_wave_dir and f_pb_wave_dir != 0 and is_sig
+                f_pb_waves += 1
+            if is_sig
+                f_pb_wave_dir := cur_cd
+
+            pb_local = _local_range_5
+            if pb_local < atr_val * 2.5 and f_pb_waves >= 2
+                f_pb_inner_ranging := true
+            if f_pb_inner_ranging and body_size > atr_val * 0.8 and cur_cd == 1
+                f_pb_inner_disp := true
+
+            is_pat1 = f_pb_inner_ranging and f_pb_inner_disp
+            is_pat2 = not is_pat1 and f_pb_waves <= 3
+            is_pat3 = not is_pat1 and f_pb_waves >= 4
+            cur_pat = is_pat1 ? 1 : is_pat2 ? 2 : 3
+
+            recent_lo = _recent_lo_5
+            if close < recent_lo and close < open
+                f_active_pattern := cur_pat
+                e_txt = str.tostring(f_active_pattern) + "р загвар ▼ ENTRY"
+                label.new(bar_index, high + atr_val * 0.5, e_txt,
+                  style=label.style_label_down, color=color.new(#f23645, 0),
+                  textcolor=color.white, size=size.small,
+                  tooltip="Fractal PB Entry\nЗагвар: " + str.tostring(f_active_pattern) + "р\nДавалгаа: " + str.tostring(f_pb_waves))
+
+    f_prev_cd := cur_cd
+
+// ══════════════════════════════════════════════════════════════
+// ═══ TBM: MOM → FIBO → 61.8 ENTRY ═══
+// ══════════════════════════════════════════════════════════════
+var line[] tbm_lines = array.new_line(0)
+var label[] tbm_labels = array.new_label(0)
+
+tbm_clean() =>
+    while array.size(tbm_lines) > i_max_fibs * 4
+        line.delete(array.shift(tbm_lines))
+    while array.size(tbm_labels) > i_max_fibs * 2
+        label.delete(array.shift(tbm_labels))
+
+var float t_imp_hi = na
+var float t_imp_lo = na
+var float t_imp_618 = na
+var int   t_imp_dir = 0
+
+if not na(ph) and array.size(sl_p) > 0
+    lo = array.get(sl_p, array.size(sl_p) - 1)
+    rng = ph - lo
+    if rng > atr_val * 2
+        t_imp_hi := ph
+        t_imp_lo := lo
+        t_imp_618 := lo + rng * 0.618
+        t_imp_dir := 1
+
+if not na(pl) and array.size(sh_p) > 0
+    hi = array.get(sh_p, array.size(sh_p) - 1)
+    rng = hi - pl
+    if rng > atr_val * 2
+        t_imp_hi := hi
+        t_imp_lo := pl
+        t_imp_618 := hi - rng * 0.618
+        t_imp_dir := -1
+
+var float[] t_mom_p = array.new_float(0)
+var float[] t_618s  = array.new_float(0)
+var float[] t_72s   = array.new_float(0)
+var int[]   t_dirs  = array.new_int(0)
+
+var bool t_reversed = false
+
+t_draw_fibo(fib_0, fib_1, mom_p, mom_b, dir) =>
+    fib_range = math.abs(fib_1 - fib_0)
+    fib_618 = dir == 1 ? fib_0 + fib_range * 0.618 : fib_0 - fib_range * 0.618
+    fib_72  = dir == 1 ? fib_0 + fib_range * 0.72 : fib_0 - fib_range * 0.72
+    fib_end = mom_b + i_tbm_fib
+    dist = math.abs(fib_618 - mom_p)
+    if dist <= atr_val * i_erliz_tol
+        array.push(tbm_lines, line.new(mom_b, fib_0, fib_end, fib_0, color=i_col_tbm, width=1))
+        array.push(tbm_lines, line.new(mom_b, fib_1, fib_end, fib_1, color=i_col_tbm, width=1))
+        array.push(tbm_lines, line.new(mom_b, mom_p, fib_end, mom_p, color=i_col_mom, width=1))
+        array.push(tbm_labels, label.new(fib_end + 1, mom_p, "MOM", style=label.style_label_left, color=color.new(color.white, 100), textcolor=i_col_mom, size=size.tiny))
+        array.push(tbm_lines, line.new(mom_b, fib_618, fib_end, fib_618, color=i_col_mom, width=2))
+        tbm_clean()
+        array.push(t_mom_p, mom_p)
+        array.push(t_618s, fib_618)
+        array.push(t_72s, fib_72)
+        array.push(t_dirs, dir)
+        if array.size(t_mom_p) > 10
+            array.shift(t_mom_p)
+            array.shift(t_618s)
+            array.shift(t_72s)
+            array.shift(t_dirs)
+    fib_618
+
+// Трэнд эргэлт → MOM
+if t_imp_dir == 1 and not na(t_imp_618) and not t_reversed
+    if close < t_imp_618 and close < open and math.min(open, close) < t_imp_618
+        t_reversed := true
+        if array.size(sh_p) > 0
+            mp = array.get(sh_p, array.size(sh_p) - 1)
+            mb = array.get(sh_b, array.size(sh_b) - 1)
+            t_draw_fibo(t_imp_hi, t_imp_lo, mp, mb, -1)
+            if array.size(sh_p) >= 2 and array.size(sl_p) >= 1
+                ps = array.get(sh_p, array.size(sh_p) - 2)
+                ls = array.get(sl_p, array.size(sl_p) - 1)
+                mr = ps - ls
+                if mr > atr_val
+                    t_draw_fibo(t_imp_hi, t_imp_lo, ls + mr * 0.618, array.get(sl_b, array.size(sl_b) - 1), -1)
+
+if t_imp_dir == -1 and not na(t_imp_618) and not t_reversed
+    if close > t_imp_618 and close > open and math.max(open, close) > t_imp_618
+        t_reversed := true
+        if array.size(sl_p) > 0
+            mp = array.get(sl_p, array.size(sl_p) - 1)
+            mb = array.get(sl_b, array.size(sl_b) - 1)
+            t_draw_fibo(t_imp_lo, t_imp_hi, mp, mb, 1)
+            if array.size(sl_p) >= 2 and array.size(sh_p) >= 1
+                ps = array.get(sl_p, array.size(sl_p) - 2)
+                ls = array.get(sh_p, array.size(sh_p) - 1)
+                mr = ls - ps
+                if mr > atr_val
+                    t_draw_fibo(t_imp_lo, t_imp_hi, ls - mr * 0.618, array.get(sh_b, array.size(sh_b) - 1), 1)
+
+if not na(ph) or not na(pl)
+    t_reversed := false
+
+// TBM Entry: 61.8 дээр ирэхэд
+var int   t_last_bar = 0
+var float t_last_price = na
+
+if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
+    sz = array.size(t_618s)
+    for i = 0 to sz - 1
+        f618 = array.get(t_618s, i)
+        f72  = array.get(t_72s, i)
+        fd   = array.get(t_dirs, i)
+        too_close = not na(t_last_price) and math.abs(close - t_last_price) < atr_val * 2
+
+        // Уялдаа
+        conf = false
+        zt = math.max(f618, f72)
+        zb = math.min(f618, f72)
+        tol = atr_val * i_conf_tol
+        if sz >= 2
+            for j = 0 to sz - 1
+                if j != i
+                    mj = array.get(t_mom_p, j)
+                    if mj >= (zb - tol) and mj <= (zt + tol)
+                        conf := true
+
+        if fd == -1 and low <= f618 and close > f618 and close > open and not too_close
+            lbl = conf ? "TBM ▲ ★" : "TBM ▲"
+            col = conf ? color.new(#089981, 0) : color.new(#089981, 50)
+            label.new(bar_index, low - atr_val * 0.5, lbl, style=label.style_label_up, color=col, textcolor=color.white, size=size.small, tooltip="TBM BUY | 61.8: " + str.tostring(f618, format.mintick) + (conf ? "\n✓ Уялдаа" : ""))
+            t_last_bar := bar_index
+            t_last_price := close
+            array.remove(t_618s, i)
+            array.remove(t_72s, i)
+            array.remove(t_mom_p, i)
+            array.remove(t_dirs, i)
+            break
+
+        if fd == 1 and high >= f618 and close < f618 and close < open and not too_close
+            lbl = conf ? "TBM ▼ ★" : "TBM ▼"
+            col = conf ? color.new(#f23645, 0) : color.new(#f23645, 50)
+            label.new(bar_index, high + atr_val * 0.5, lbl, style=label.style_label_down, color=col, textcolor=color.white, size=size.small, tooltip="TBM SELL | 61.8: " + str.tostring(f618, format.mintick) + (conf ? "\n✓ Уялдаа" : ""))
+            t_last_bar := bar_index
+            t_last_price := close
+            array.remove(t_618s, i)
+            array.remove(t_72s, i)
+            array.remove(t_mom_p, i)
+            array.remove(t_dirs, i)
+            break
+
+// ══════════════════════════════════════════════════════════════
+// MTF TABLE
+// ══════════════════════════════════════════════════════════════
+detect_pattern(o, h, l, c) =>
+    body = math.abs(c - o)
+    full = h - l
+    body_r = full > 0 ? body / full : 0
+    pb_wick = c > o ? (o - l) : (h - o)
+    pb_r = full > 0 ? pb_wick / full : 0
+    body_r > 0.7 ? 2 : (pb_r > 0.15 and pb_r < 0.45 and body_r > 0.35) ? 1 : 3
+
+htf1_o = request.security(syminfo.tickerid, i_htf1, open)
+htf1_h = request.security(syminfo.tickerid, i_htf1, high)
+htf1_l = request.security(syminfo.tickerid, i_htf1, low)
+htf1_c = request.security(syminfo.tickerid, i_htf1, close)
+htf2_o = request.security(syminfo.tickerid, i_htf2, open)
+htf2_h = request.security(syminfo.tickerid, i_htf2, high)
+htf2_l = request.security(syminfo.tickerid, i_htf2, low)
+htf2_c = request.security(syminfo.tickerid, i_htf2, close)
+htf3_o = request.security(syminfo.tickerid, i_htf3, open)
+htf3_h = request.security(syminfo.tickerid, i_htf3, high)
+htf3_l = request.security(syminfo.tickerid, i_htf3, low)
+htf3_c = request.security(syminfo.tickerid, i_htf3, close)
+htf4_o = request.security(syminfo.tickerid, i_htf4, open)
+htf4_h = request.security(syminfo.tickerid, i_htf4, high)
+htf4_l = request.security(syminfo.tickerid, i_htf4, low)
+htf4_c = request.security(syminfo.tickerid, i_htf4, close)
+
+p1 = detect_pattern(htf1_o, htf1_h, htf1_l, htf1_c)
+p2 = detect_pattern(htf2_o, htf2_h, htf2_l, htf2_c)
+p3 = detect_pattern(htf3_o, htf3_h, htf3_l, htf3_c)
+p4 = detect_pattern(htf4_o, htf4_h, htf4_l, htf4_c)
+
+pat_str(p) => p == 1 ? "1р" : p == 2 ? "2р" : "3р"
+dir_col(o, c) => c > o ? #089981 : #f23645
+
+var table tbl = table.new(position.top_right, 2, 5, bgcolor=color.new(#1e1e1e, 5), border_width=1, border_color=color.new(color.gray, 70))
+
+if barstate.islast
+    table.cell(tbl, 0, 0, "Цаг", text_color=color.gray, text_size=size.small)
+    table.cell(tbl, 1, 0, "Загвар", text_color=color.gray, text_size=size.small)
+    table.cell(tbl, 0, 1, "30m" + (htf1_c > htf1_o ? " ▲" : " ▼"), text_color=dir_col(htf1_o, htf1_c), text_size=size.small)
+    table.cell(tbl, 1, 1, pat_str(p1), text_color=color.white, text_size=size.small)
+    table.cell(tbl, 0, 2, "1H" + (htf2_c > htf2_o ? " ▲" : " ▼"), text_color=dir_col(htf2_o, htf2_c), text_size=size.small)
+    table.cell(tbl, 1, 2, pat_str(p2), text_color=color.white, text_size=size.small)
+    table.cell(tbl, 0, 3, "4H" + (htf3_c > htf3_o ? " ▲" : " ▼"), text_color=dir_col(htf3_o, htf3_c), text_size=size.small)
+    table.cell(tbl, 1, 3, pat_str(p3), text_color=color.white, text_size=size.small)
+    table.cell(tbl, 0, 4, "D" + (htf4_c > htf4_o ? " ▲" : " ▼"), text_color=dir_col(htf4_o, htf4_c), text_size=size.small)
+    table.cell(tbl, 1, 4, pat_str(p4), text_color=color.white, text_size=size.small)
+
+// ALERTS
+alertcondition(track_state == 1 and track_state[1] == 0, "Fractal Bull", "Fractal: Bullish шилжүүлэгч")
+alertcondition(track_state == -1 and track_state[1] == 0, "Fractal Bear", "Fractal: Bearish шилжүүлэгч")
+alertcondition(t_reversed, "TBM Трэнд эргэлт", "TBM: MOM олдлоо")
