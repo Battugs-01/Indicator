@@ -48,8 +48,8 @@ prev_range = prev_hi - prev_lo
 was_ranging = prev_range < atr_val * i_max_range
 
 _local_range_5 = ta.highest(high, 5) - ta.lowest(low, 5)
-_recent_hi_5 = ta.highest(high, 5)[1]
-_recent_lo_5 = ta.lowest(low, 5)[1]
+_recent_hi_5 = ta.highest(high, 2)[1]
+_recent_lo_5 = ta.lowest(low, 2)[1]
 
 ph = ta.pivothigh(high, i_swing_len, i_swing_len)
 pl = ta.pivotlow(low, i_swing_len, i_swing_len)
