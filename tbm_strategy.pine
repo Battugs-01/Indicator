@@ -1,19 +1,20 @@
-// © Battugs - TBM Strategy v4 (MOM Auto-Detect)
-// MOM = улаан box (ойлтын high/low) + Fibo 0, 1, 61.8
+// © Battugs - TBM Strategy v6
+// 61.8 сэтлэсэн = трэнд эргэлт → MOM олох → Fibo
 
 //@version=5
-indicator("TBM Strategy", "TBM", overlay=true, max_lines_count=100, max_labels_count=50, max_boxes_count=50)
+indicator("TBM Strategy", "TBM", overlay=true, max_lines_count=100, max_labels_count=50)
 
 // ══════════════════════════════════════════════════════════════
 // INPUTS
 // ══════════════════════════════════════════════════════════════
 i_swing_len = input.int(5, "Swing Length", minval=2, maxval=20)
 i_atr_len   = input.int(14, "ATR Length")
-i_fib_len   = input.int(25, "Fibo шугам урт", minval=5, maxval=80)
-i_min_move  = input.float(3.0, "Min хөдөлгөөн (ATR x)", minval=1.0, maxval=8.0, step=0.5, tooltip="Том байх тусам цөөн, чухал MOM олно")
-i_max_fibs  = input.int(4, "Max Fibo тоо", minval=1, maxval=8)
+i_fib_len   = input.int(30, "Fibo шугам урт", minval=5, maxval=80)
+i_max_fibs  = input.int(3, "Max Fibo тоо", minval=1, maxval=6)
+
 i_col_fibo  = input.color(#000000, "Fibo 0, 1 (хар)")
-i_col_618   = input.color(#f23645, "61.8 (улаан)")
+i_col_mom   = input.color(#ef5350, "MOM (улаан)")
+i_col_618   = input.color(#ef5350, "61.8")
 
 // ══════════════════════════════════════════════════════════════
 // CORE
@@ -24,166 +25,156 @@ ph = ta.pivothigh(high, i_swing_len, i_swing_len)
 pl = ta.pivotlow(low, i_swing_len, i_swing_len)
 
 // Swing хадгалах
-var float cur_sh = na
-var int   cur_sh_bar = 0
-var float cur_sl = na
-var int   cur_sl_bar = 0
+var float[] sh_p = array.new_float(0)
+var int[]   sh_b = array.new_int(0)
+var float[] sl_p = array.new_float(0)
+var int[]   sl_b = array.new_int(0)
 
 if not na(ph)
-    cur_sh     := ph
-    cur_sh_bar := bar_index - i_swing_len
+    array.push(sh_p, ph)
+    array.push(sh_b, bar_index - i_swing_len)
+    if array.size(sh_p) > 30
+        array.shift(sh_p)
+        array.shift(sh_b)
+
 if not na(pl)
-    cur_sl     := pl
-    cur_sl_bar := bar_index - i_swing_len
+    array.push(sl_p, pl)
+    array.push(sl_b, bar_index - i_swing_len)
+    if array.size(sl_p) > 30
+        array.shift(sl_p)
+        array.shift(sl_b)
 
 // Хуучин fibo устгах
 var line[] fib_lines = array.new_line(0)
+var label[] fib_labels = array.new_label(0)
 
 clean_old() =>
-    while array.size(fib_lines) > i_max_fibs * 3
+    while array.size(fib_lines) > i_max_fibs * 5
         line.delete(array.shift(fib_lines))
+    while array.size(fib_labels) > i_max_fibs * 3
+        label.delete(array.shift(fib_labels))
 
 // ══════════════════════════════════════════════════════════════
-// MOM ОЛОХ
+// ТРЭНДИЙН ЭРГЭЛТ ОЛОХ → MOM ТОДОРХОЙЛОХ
 // ══════════════════════════════════════════════════════════════
-var float active_mom = na
-var float active_0   = na
-var float active_618 = na
-var int   active_dir = 0
+// 1. Impulse хөдөлгөөн олох (swing low → swing high)
+// 2. Тэр impulse-н 61.8 тооцох
+// 3. PB ирээд 61.8-г СЭТЭЛВЭЛ = трэнд эргэлт!
+// 4. Тэр сэтлэсэн ойлтын extreme = MOM
+// 5. MOM-с fibo татах
+//
+// "61.8 сэтлэсэн хөдөлгөөнийг трэндийн эргэлт гэж үзнэ"
+// "Тухайн доод буюу 1 цэгийг mom гэж нэрийдээд байгаа"
 
-// ── Bullish MOM: Swing Low → MOM ──
-if not na(pl) and not na(cur_sh)
-    mom = pl
-    fib_0 = cur_sh
-    fib_range = fib_0 - mom
+// Сүүлийн 2 swing-ийн 61.8 тооцох
+var float last_imp_hi  = na
+var float last_imp_lo  = na
+var float last_imp_618 = na
+var int   last_imp_dir = 0   // 1=bull impulse, -1=bear impulse
 
-    if fib_range > atr_val * i_min_move
-        fib_618 = mom + fib_range * 0.618
-        pl_bar = bar_index - i_swing_len
-        fib_end = pl_bar + i_fib_len
+// Шинэ impulse бүртгэх
+if not na(ph) and array.size(sl_p) > 0
+    // Bull impulse: swing low → swing high
+    lo = array.get(sl_p, array.size(sl_p) - 1)
+    rng = ph - lo
+    if rng > atr_val * 2
+        last_imp_hi  := ph
+        last_imp_lo  := lo
+        last_imp_618 := lo + rng * 0.618
+        last_imp_dir := 1
 
-        // 0 — хар
-        l0 = line.new(cur_sh_bar, fib_0, fib_end, fib_0, color=i_col_fibo, width=1)
-        // 1 (MOM) — хар
-        l1 = line.new(pl_bar, mom, fib_end, mom, color=i_col_fibo, width=1)
-        // 61.8 — улаан тод
-        l618 = line.new(pl_bar, fib_618, fib_end, fib_618, color=i_col_618, width=2)
-
-        array.push(fib_lines, l0)
-        array.push(fib_lines, l1)
-        array.push(fib_lines, l618)
-        clean_old()
-
-        active_mom := mom
-        active_0   := fib_0
-        active_618 := fib_618
-        active_dir := 1
-
-// ── Bearish MOM: Swing High → MOM ──
-if not na(ph) and not na(cur_sl)
-    mom = ph
-    fib_0 = cur_sl
-    fib_range = mom - fib_0
-
-    if fib_range > atr_val * i_min_move
-        fib_618 = mom - fib_range * 0.618
-        ph_bar = bar_index - i_swing_len
-        fib_end = ph_bar + i_fib_len
-
-        l0 = line.new(cur_sl_bar, fib_0, fib_end, fib_0, color=i_col_fibo, width=1)
-        l1 = line.new(ph_bar, mom, fib_end, mom, color=i_col_fibo, width=1)
-        l618 = line.new(ph_bar, fib_618, fib_end, fib_618, color=i_col_618, width=2)
-
-        array.push(fib_lines, l0)
-        array.push(fib_lines, l1)
-        array.push(fib_lines, l618)
-        clean_old()
-
-        active_mom := mom
-        active_0   := fib_0
-        active_618 := fib_618
-        active_dir := -1
+if not na(pl) and array.size(sh_p) > 0
+    // Bear impulse: swing high → swing low
+    hi = array.get(sh_p, array.size(sh_p) - 1)
+    rng = hi - pl
+    if rng > atr_val * 2
+        last_imp_hi  := hi
+        last_imp_lo  := pl
+        last_imp_618 := hi - rng * 0.618
+        last_imp_dir := -1
 
 // ══════════════════════════════════════════════════════════════
-// ХӨДӨЛГӨӨНИЙ УЯЛДАА ШАЛГАХ
+// 61.8 СЭТЛЭСЭН ҮҮ? → ТРЭНД ЭРГЭЛТ → MOM
 // ══════════════════════════════════════════════════════════════
-// Олон fibo-н 61.8 болон 1 цэг давхцаж байвал = хүчтэй бүс (уялдаа)
-// Хол байвал = эрлийз fibo (хаях)
-// Хадгалсан fibo level-үүдийг хооронд нь харьцуулна
+var bool  trend_reversed = false
+var float mom_price      = na
+var int   mom_bar        = 0
 
-var float[] all_618  = array.new_float(0)
-var float[] all_mom  = array.new_float(0)
+// Bull impulse-н 61.8 сэтлэсэн = bear трэнд эргэлт
+// (ханш доошоо 61.8-г бүтэн биеэр эвдсэн)
+if last_imp_dir == 1 and not na(last_imp_618) and not trend_reversed
+    if close < last_imp_618 and close < open and math.min(open, close) < last_imp_618
+        trend_reversed := true
+        // MOM = тэр сэтлэсэн хөдөлгөөний ойлтын HIGH
+        // (сэтлэхээс өмнөх хамгийн ойрын swing high)
+        if array.size(sh_p) > 0
+            mom_price := array.get(sh_p, array.size(sh_p) - 1)
+            mom_bar   := array.get(sh_b, array.size(sh_b) - 1)
 
-// Шинэ fibo нэмэгдэхэд хадгалах
-if active_dir != 0 and not na(active_618)
-    last_618 = array.size(all_618) > 0 ? array.get(all_618, array.size(all_618) - 1) : na
-    if na(last_618) or math.abs(last_618 - active_618) > atr_val * 0.5
-        array.push(all_618, active_618)
-        array.push(all_mom, active_mom)
-        if array.size(all_618) > 10
-            array.shift(all_618)
-            array.shift(all_mom)
+            // MOM олдлоо → Fibo татах
+            // 0 = impulse-н high (одоогийн swing high)
+            // 1 = MOM-с доор (impulse low)
+            // MOM = дотоод ойлтын цэг
+            fib_0 = last_imp_hi
+            fib_1 = last_imp_lo
+            fib_range = fib_0 - fib_1
+            fib_618 = fib_0 - fib_range * 0.618
+            fib_72  = fib_0 - fib_range * 0.72
+            fib_end = bar_index + i_fib_len
 
-// Уялдаа олох: одоогийн 61.8 ойролцоо өөр fibo-н 1 цэг (MOM) байна уу
-var bool  has_confluence = false
-var float confluence_level = na
-var int   confluence_count = 0
+            // 0 — хар
+            l0 = line.new(mom_bar, fib_0, fib_end, fib_0, color=i_col_fibo, width=1)
+            array.push(fib_lines, l0)
+            // 1 — хар
+            l1 = line.new(mom_bar, fib_1, fib_end, fib_1, color=i_col_fibo, width=1)
+            array.push(fib_lines, l1)
+            // MOM — улаан
+            lm = line.new(mom_bar, mom_price, fib_end, mom_price, color=i_col_mom, width=1)
+            array.push(fib_lines, lm)
+            lb = label.new(fib_end + 1, mom_price, "MOM", style=label.style_label_left, color=color.new(color.white, 100), textcolor=i_col_mom, size=size.tiny)
+            array.push(fib_labels, lb)
+            // 61.8 — улаан тод
+            l618 = line.new(mom_bar, fib_618, fib_end, fib_618, color=i_col_618, width=2)
+            array.push(fib_lines, l618)
+            // 72
+            l72 = line.new(mom_bar, fib_72, fib_end, fib_72, color=i_col_618, style=line.style_dashed, width=1)
+            array.push(fib_lines, l72)
 
-if not na(active_618) and active_dir != 0
-    has_confluence := false
-    confluence_count := 0
-    confluence_level := na
-    tolerance = atr_val * 3.0  // ATR * 3 зайд давхацвал уялдаа
+            clean_old()
 
-    if array.size(all_mom) > 0
-        for i = 0 to array.size(all_mom) - 1
-            m = array.get(all_mom, i)
-            if math.abs(m - active_618) < tolerance
-                has_confluence := true
-                confluence_count += 1
-                confluence_level := m
+// Bear impulse-н 61.8 сэтлэсэн = bull трэнд эргэлт
+if last_imp_dir == -1 and not na(last_imp_618) and not trend_reversed
+    if close > last_imp_618 and close > open and math.max(open, close) > last_imp_618
+        trend_reversed := true
+        if array.size(sl_p) > 0
+            mom_price := array.get(sl_p, array.size(sl_p) - 1)
+            mom_bar   := array.get(sl_b, array.size(sl_b) - 1)
 
-    if array.size(all_618) > 0
-        for i = 0 to array.size(all_618) - 1
-            f = array.get(all_618, i)
-            if f != active_618 and math.abs(f - active_618) < tolerance
-                confluence_count += 1
+            fib_0 = last_imp_lo
+            fib_1 = last_imp_hi
+            fib_range = fib_1 - fib_0
+            fib_618 = fib_0 + fib_range * 0.618
+            fib_72  = fib_0 + fib_range * 0.72
+            fib_end = bar_index + i_fib_len
 
-// ══════════════════════════════════════════════════════════════
-// 61.8 ENTRY + УЯЛДАА
-// ══════════════════════════════════════════════════════════════
-if active_dir == 1 and not na(active_618)
-    bounce = low <= active_618 and close > active_618 and close > open
-    broke = close < active_618 and close < open and math.min(open, close) < active_618
+            l0 = line.new(mom_bar, fib_0, fib_end, fib_0, color=i_col_fibo, width=1)
+            array.push(fib_lines, l0)
+            l1 = line.new(mom_bar, fib_1, fib_end, fib_1, color=i_col_fibo, width=1)
+            array.push(fib_lines, l1)
+            lm = line.new(mom_bar, mom_price, fib_end, mom_price, color=i_col_mom, width=1)
+            array.push(fib_lines, lm)
+            lb = label.new(fib_end + 1, mom_price, "MOM", style=label.style_label_left, color=color.new(color.white, 100), textcolor=i_col_mom, size=size.tiny)
+            array.push(fib_labels, lb)
+            l618 = line.new(mom_bar, fib_618, fib_end, fib_618, color=i_col_618, width=2)
+            array.push(fib_lines, l618)
+            l72 = line.new(mom_bar, fib_72, fib_end, fib_72, color=i_col_618, style=line.style_dashed, width=1)
+            array.push(fib_lines, l72)
 
-    if bounce
-        conf_txt = has_confluence ? "✓ Уялдаа (" + str.tostring(confluence_count) + ")" : "✗ Уялдаагүй"
-        lbl_txt = has_confluence ? "61.8 ▲ ★" : "61.8 ▲"
-        lbl_col = has_confluence ? color.new(#089981, 0) : color.new(#089981, 60)
-        label.new(bar_index, low - atr_val * 0.3, lbl_txt,
-          style=label.style_label_up, color=lbl_col,
-          textcolor=color.white, size=size.small,
-          tooltip="61.8 ойлт → BUY\nMOM: " + str.tostring(active_mom, format.mintick) + "\n61.8: " + str.tostring(active_618, format.mintick) + "\n" + conf_txt)
-        active_dir := 0
-    if broke
-        active_dir := 0
+            clean_old()
 
-if active_dir == -1 and not na(active_618)
-    bounce = high >= active_618 and close < active_618 and close < open
-    broke = close > active_618 and close > open and math.max(open, close) > active_618
-
-    if bounce
-        conf_txt = has_confluence ? "✓ Уялдаа (" + str.tostring(confluence_count) + ")" : "✗ Уялдаагүй"
-        lbl_txt = has_confluence ? "61.8 ▼ ★" : "61.8 ▼"
-        lbl_col = has_confluence ? color.new(#f23645, 0) : color.new(#f23645, 60)
-        label.new(bar_index, high + atr_val * 0.3, lbl_txt,
-          style=label.style_label_down, color=lbl_col,
-          textcolor=color.white, size=size.small,
-          tooltip="61.8 ойлт → SELL\nMOM: " + str.tostring(active_mom, format.mintick) + "\n61.8: " + str.tostring(active_618, format.mintick) + "\n" + conf_txt)
-        active_dir := 0
-    if broke
-        active_dir := 0
+// Шинэ impulse гарахад trend_reversed reset
+if not na(ph) or not na(pl)
+    trend_reversed := false
 
 // ALERTS
-alertcondition(active_dir == 1 and low <= active_618 and close > active_618, "Bull 61.8", "BUY")
-alertcondition(active_dir == -1 and high >= active_618 and close < active_618, "Bear 61.8", "SELL")
+alertcondition(trend_reversed, "Трэнд эргэлт", "61.8 сэтлэгдлээ — трэнд эргэлт + MOM")
