@@ -232,30 +232,15 @@ if f_disp_dir != 0 and f_bars_since_disp > 0 and f_active_pattern == 0
             is_pat3 = not is_pat1 and f_pb_waves >= 4
             cur_pat = is_pat1 ? 1 : is_pat2 ? 2 : 3
 
-            // PB tracking label (entry биш, зөвхөн таамаглал)
-            pb_bars = bar_index - f_pb_start_bar
-            guess = cur_pat == 1 ? "? 1р" : cur_pat == 2 ? "? 2р" : "? 3р"
-            lbl_y = f_pb_swing_lo - atr_val * 0.3
-            _sl = 100 * syminfo.mintick
-            _sl_p = close - _sl
-            _tp_p = close + _sl * 3
-            t_tip = "═══ PB TRACKING (BUY) ═══"
-            t_tip += "\nТаамаглал: " + guess
-            t_tip += "\nДавалгаа: " + str.tostring(f_pb_waves) + " | Бар: " + str.tostring(pb_bars)
-            t_tip += "\n───────────"
-            t_tip += "\nОдоогийн үнэ: " + str.tostring(close, format.mintick)
-            t_tip += "\nSL: " + str.tostring(_sl_p, format.mintick) + " (-100 pip)"
-            t_tip += "\nTP: " + str.tostring(_tp_p, format.mintick) + " (+300 pip, RR 1:3)"
-            t_tip += "\n───────────"
-            t_tip += "\nFractal: Bull шилжүүлэгч гарсан"
-            t_tip += "\nPB явж байна → TBM 61.8 хүлээж байна"
-            if na(f_pb_label)
-                f_pb_label := label.new(bar_index, lbl_y, guess, style=label.style_label_up, color=color.new(#2962ff, 60), textcolor=color.white, size=size.small, tooltip=t_tip)
-            else
-                label.set_x(f_pb_label, bar_index)
-                label.set_y(f_pb_label, lbl_y)
-                label.set_text(f_pb_label, guess)
-                label.set_tooltip(f_pb_label, t_tip)
+            recent_hi = _recent_hi_5
+            if close > recent_hi and close > open
+                f_active_pattern := cur_pat
+                e_txt = str.tostring(f_active_pattern) + "р загвар ▲ ENTRY"
+                label.new(bar_index, low - atr_val * 0.5, e_txt,
+                  style=label.style_label_up, color=color.new(#089981, 0),
+                  textcolor=color.white, size=size.small,
+                  tooltip="Fractal PB Entry\nЗагвар: " + str.tostring(f_active_pattern) + "р\nДавалгаа: " + str.tostring(f_pb_waves))
+                alert("🟢 FRACTAL BUY | " + str.tostring(f_active_pattern) + "р загвар | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
 
     else if f_disp_dir == -1
         if not f_pb_started and close > open
@@ -290,35 +275,17 @@ if f_disp_dir != 0 and f_bars_since_disp > 0 and f_active_pattern == 0
             is_pat3 = not is_pat1 and f_pb_waves >= 4
             cur_pat = is_pat1 ? 1 : is_pat2 ? 2 : 3
 
-            // PB tracking label
-            pb_bars = bar_index - f_pb_start_bar
-            guess = cur_pat == 1 ? "? 1р" : cur_pat == 2 ? "? 2р" : "? 3р"
-            lbl_y = f_pb_swing_hi + atr_val * 0.3
-            _sl = 100 * syminfo.mintick
-            _sl_p = close + _sl
-            _tp_p = close - _sl * 3
-            t_tip = "═══ PB TRACKING (SELL) ═══"
-            t_tip += "\nТаамаглал: " + guess
-            t_tip += "\nДавалгаа: " + str.tostring(f_pb_waves) + " | Бар: " + str.tostring(pb_bars)
-            t_tip += "\n───────────"
-            t_tip += "\nОдоогийн үнэ: " + str.tostring(close, format.mintick)
-            t_tip += "\nSL: " + str.tostring(_sl_p, format.mintick) + " (+100 pip)"
-            t_tip += "\nTP: " + str.tostring(_tp_p, format.mintick) + " (-300 pip, RR 1:3)"
-            t_tip += "\n───────────"
-            t_tip += "\nFractal: Bear шилжүүлэгч гарсан"
-            t_tip += "\nPB явж байна → TBM 61.8 хүлээж байна"
-            if na(f_pb_label)
-                f_pb_label := label.new(bar_index, lbl_y, guess, style=label.style_label_down, color=color.new(#2962ff, 60), textcolor=color.white, size=size.small, tooltip=t_tip)
-            else
-                label.set_x(f_pb_label, bar_index)
-                label.set_y(f_pb_label, lbl_y)
-                label.set_text(f_pb_label, guess)
-                label.set_tooltip(f_pb_label, t_tip)
+            recent_lo = _recent_lo_5
+            if close < recent_lo and close < open
+                f_active_pattern := cur_pat
+                e_txt = str.tostring(f_active_pattern) + "р загвар ▼ ENTRY"
+                label.new(bar_index, high + atr_val * 0.5, e_txt,
+                  style=label.style_label_down, color=color.new(#f23645, 0),
+                  textcolor=color.white, size=size.small,
+                  tooltip="Fractal PB Entry\nЗагвар: " + str.tostring(f_active_pattern) + "р\nДавалгаа: " + str.tostring(f_pb_waves))
+                alert("🔴 FRACTAL SELL | " + str.tostring(f_active_pattern) + "р загвар | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
 
     f_prev_cd := cur_cd
-
-// Fractal PB идэвхитэй байгаа эсэх (TBM entry-д ашиглана)
-f_pb_active = f_disp_dir != 0 and f_pb_started and f_active_pattern == 0
 
 // ══════════════════════════════════════════════════════════════
 // ═══ TBM: MOM → FIBO → 61.8 ENTRY ═══
@@ -420,7 +387,10 @@ if t_imp_dir == -1 and not na(t_imp_618) and not t_reversed
 
 // t_reversed reset: impulse чиглэл өөрчлөгдөхөд дээр хийгдсэн
 
-// TBM Entry: 61.8 дээр ирэхэд
+// Fractal PB идэвхитэй эсэх
+f_pb_active = f_disp_dir != 0 and f_pb_started and f_active_pattern == 0
+
+// TBM Entry: 61.8 дээр ирэхэд + SL/TP (RR 1:3, SL=100 pip)
 var int   t_last_bar = 0
 var float t_last_price = na
 
@@ -444,8 +414,8 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
                     if mj >= (zb - tol) and mj <= (zt + tol)
                         conf := true
 
-        // Bull entry: өмнөх лаа 61.8-д хүрсэн + одоогийн лаа дээшээ нээгдсэн = лааны ЭХЭНД entry
-        if fd == -1 and low[1] <= f618 and close[1] > f618 and open > f618 and not too_close
+        // Bull entry: одоогийн лаа 61.8-д хүрээд буцсан = шууд entry
+        if fd == -1 and low <= f618 and close > f618 and close > open and not too_close
             is_combined = f_pb_active and f_disp_dir == 1
             if is_combined
                 if not na(f_pb_label)
@@ -453,39 +423,29 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
                     f_pb_label := na
                 f_active_pattern := 1
 
-            // SL/TP тооцоолол (RR 1:3, SL=100 pip) — entry = open (лааны эхэнд)
-            entry_price = open
+            entry_price = close
             sl_dist = 100 * syminfo.mintick
             sl_price = entry_price - sl_dist
             tp_price = entry_price + sl_dist * 3
 
-            // Entry label
             lbl = is_combined ? "▲ ENTRY" : (conf ? "TBM ▲ ★" : "TBM ▲")
             col = is_combined ? color.new(#089981, 0) : (conf ? color.new(#089981, 0) : color.new(#089981, 50))
 
-            // Tooltip — яагаад entry нээж байгааг тайлбарлах
             e_tip = "═══ BUY ENTRY ═══"
-            e_tip += "\nEntry: " + str.tostring(entry_price, format.mintick) + " (лааны эхэнд)"
-            e_tip += "\nSL: " + str.tostring(sl_price, format.mintick) + " (" + str.tostring(sl_dist, format.mintick) + " pip)"
-            e_tip += "\nTP: " + str.tostring(tp_price, format.mintick) + " (RR 1:3)"
+            e_tip += "\nEntry: " + str.tostring(entry_price, format.mintick) + " (шууд)"
+            e_tip += "\nSL: " + str.tostring(sl_price, format.mintick) + " (-100 pip)"
+            e_tip += "\nTP: " + str.tostring(tp_price, format.mintick) + " (+300 pip, RR 1:3)"
             e_tip += "\n───────────"
             e_tip += "\n61.8 zone: " + str.tostring(f618, format.mintick)
             e_tip += conf ? "\n✓ Уялдаа: олон MOM давхацсан" : ""
             if is_combined
-                e_tip += "\n───────────"
-                e_tip += "\n★ COMBINED SETUP"
-                e_tip += "\nFractal: Bull шилжүүлэгч → PB явж байна"
-                e_tip += "\nTBM: 61.8 zone дээр ирж ойлт авсан"
-                e_tip += "\n= Fractal PB + TBM 61.8 давхцсан"
+                e_tip += "\n★ COMBINED: Fractal PB + TBM 61.8"
 
             label.new(bar_index, low - atr_val * 0.5, lbl, style=label.style_label_up, color=col, textcolor=color.white, size=size.small, tooltip=e_tip)
-
-            // SL шугам (улаан тасархай)
             line.new(bar_index, sl_price, bar_index + 15, sl_price, color=color.new(#f23645, 30), style=line.style_dashed, width=1)
-            // TP шугам (ногоон тасархай)
             line.new(bar_index, tp_price, bar_index + 15, tp_price, color=color.new(#089981, 30), style=line.style_dashed, width=1)
 
-            alert("🟢 " + (is_combined ? "COMBINED" : "TBM") + " BUY | Entry: " + str.tostring(close, format.mintick) + " | SL: " + str.tostring(sl_price, format.mintick) + " | TP: " + str.tostring(tp_price, format.mintick) + " | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
+            alert("🟢 " + (is_combined ? "COMBINED" : "TBM") + " BUY | Entry: " + str.tostring(close, format.mintick) + " | SL: " + str.tostring(sl_price, format.mintick) + " | TP: " + str.tostring(tp_price, format.mintick) + " | " + syminfo.ticker, alert.freq_once_per_bar)
             t_last_bar := bar_index
             t_last_price := close
             array.remove(t_618s, i)
@@ -494,8 +454,8 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
             array.remove(t_dirs, i)
             break
 
-        // Bear entry: өмнөх лаа 61.8-д хүрсэн + одоогийн лаа доошоо нээгдсэн = лааны ЭХЭНД entry
-        if fd == 1 and high[1] >= f618 and close[1] < f618 and open < f618 and not too_close
+        // Bear entry: одоогийн лаа 61.8-д хүрээд буцсан = шууд entry
+        if fd == 1 and high >= f618 and close < f618 and close < open and not too_close
             is_combined = f_pb_active and f_disp_dir == -1
             if is_combined
                 if not na(f_pb_label)
@@ -503,8 +463,7 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
                     f_pb_label := na
                 f_active_pattern := 1
 
-            // SL/TP тооцоолол (RR 1:3, SL=100 pip) — entry = open (лааны эхэнд)
-            entry_price = open
+            entry_price = close
             sl_dist = 100 * syminfo.mintick
             sl_price = entry_price + sl_dist
             tp_price = entry_price - sl_dist * 3
@@ -513,27 +472,20 @@ if array.size(t_618s) > 0 and bar_index - t_last_bar > 5
             col = is_combined ? color.new(#f23645, 0) : (conf ? color.new(#f23645, 0) : color.new(#f23645, 50))
 
             e_tip = "═══ SELL ENTRY ═══"
-            e_tip += "\nEntry: " + str.tostring(entry_price, format.mintick) + " (лааны эхэнд)"
+            e_tip += "\nEntry: " + str.tostring(entry_price, format.mintick) + " (шууд)"
             e_tip += "\nSL: " + str.tostring(sl_price, format.mintick) + " (+100 pip)"
             e_tip += "\nTP: " + str.tostring(tp_price, format.mintick) + " (-300 pip, RR 1:3)"
             e_tip += "\n───────────"
             e_tip += "\n61.8 zone: " + str.tostring(f618, format.mintick)
             e_tip += conf ? "\n✓ Уялдаа: олон MOM давхацсан" : ""
             if is_combined
-                e_tip += "\n───────────"
-                e_tip += "\n★ COMBINED SETUP"
-                e_tip += "\nFractal: Bear шилжүүлэгч → PB явж байна"
-                e_tip += "\nTBM: 61.8 zone дээр ирж ойлт авсан"
-                e_tip += "\n= Fractal PB + TBM 61.8 давхцсан"
+                e_tip += "\n★ COMBINED: Fractal PB + TBM 61.8"
 
             label.new(bar_index, high + atr_val * 0.5, lbl, style=label.style_label_down, color=col, textcolor=color.white, size=size.small, tooltip=e_tip)
-
-            // SL шугам (улаан тасархай)
             line.new(bar_index, sl_price, bar_index + 15, sl_price, color=color.new(#f23645, 30), style=line.style_dashed, width=1)
-            // TP шугам (ногоон тасархай)
             line.new(bar_index, tp_price, bar_index + 15, tp_price, color=color.new(#089981, 30), style=line.style_dashed, width=1)
 
-            alert("🔴 " + (is_combined ? "COMBINED" : "TBM") + " SELL | Entry: " + str.tostring(close, format.mintick) + " | SL: " + str.tostring(sl_price, format.mintick) + " | TP: " + str.tostring(tp_price, format.mintick) + " | " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar)
+            alert("🔴 " + (is_combined ? "COMBINED" : "TBM") + " SELL | Entry: " + str.tostring(close, format.mintick) + " | SL: " + str.tostring(sl_price, format.mintick) + " | TP: " + str.tostring(tp_price, format.mintick) + " | " + syminfo.ticker, alert.freq_once_per_bar)
             t_last_bar := bar_index
             t_last_price := close
             array.remove(t_618s, i)
