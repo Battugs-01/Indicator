@@ -162,12 +162,33 @@ void OnTick()
          double entry = ask;
          double sl = bottom_low - InpSLBuffer * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
          double sl_dist = entry - sl;
-         if(sl_dist <= 0) return;
+
+         // SL заавал entry-ээс ДООР байх ёстой
+         if(sl_dist < pip * 10)
+         {
+            // Хэрэв SL хэт ойр эсвэл дээр бол → entry лааны low ашиглах
+            sl = iLow(_Symbol, PERIOD_M1, 1) - InpSLBuffer * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+            sl_dist = entry - sl;
+         }
+
+         // SL бас дээр байвал алгасах
+         if(sl_dist <= 0)
+         {
+            Print("⚠️ VIX: SL буруу (entry: ", entry, " sl: ", sl, " bottom: ", bottom_low, ")");
+            return;
+         }
 
          // SL хэт том бол алгасах (1min scalp учир хязгаарлах)
-         if(sl_dist > pip * 500) return;  // 500 pip-с их SL = алгасна
+         if(sl_dist > pip * 500) return;
 
          double tp = entry + sl_dist * InpRR;
+
+         // TP заавал entry-ээс ДЭЭР, SL заавал entry-ээс ДООР
+         if(tp <= entry || sl >= entry)
+         {
+            Print("⚠️ VIX: TP/SL буруу | Entry: ", entry, " SL: ", sl, " TP: ", tp);
+            return;
+         }
 
          double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
          sl = MathRound(sl / tick_size) * tick_size;
