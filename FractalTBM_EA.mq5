@@ -43,9 +43,12 @@ input double   InpTBMRangeATR = 3.0;    // Range < ATR x энэ бол ranging (
 
 input group "=== Williams Vix Fix (15min) ==="
 input bool     InpVixEnable   = true;    // Vix Fix шүүлтүүр идэвхтэй
-input int      InpVixPeriod   = 22;      // Vix Fix period
-input double   InpVixBuyLevel = 1.0;     // Ногоон >= энэ утга → BUY дохио
-input double   InpVixSellLevel = 0.3;    // Саарал <= энэ утга → SELL дохио
+input int      InpVixPeriod   = 22;      // LookBack Period Standard Deviation High
+input int      InpVixBBLen    = 20;      // Bollinger Band Length
+input double   InpVixBBMult   = 2.0;     // Bollinger Band Standard Deviation Up
+input int      InpVixPctLB    = 50;      // Look Back Period Percentile High
+input double   InpVixPctHi    = 0.85;    // Highest Percentile (0.85=85%)
+input double   InpVixPctLo    = 1.01;    // Lowest Percentile (1.01=99%)
 input int      InpVixRecent   = 3;       // Сүүлийн N бар-д дохио байсан бол хүчинтэй
 
 //--- GLOBAL
@@ -1598,10 +1601,10 @@ bool CheckTBMLiqSweep(int dir, double atr_val)
 }
 
 //+------------------------------------------------------------------+
-// CM Williams Vix Fix — 15min дээр тооцоолно
-// wvf = ((highest(close, pd) - low) / highest(close, pd)) * 100
-// Ногоон + утга >= 1.0 → ёроол = BUY дохио
-// Саарал + утга → 0 руу ойртож байвал → орой = SELL дохио
+// CM Williams Vix Fix — яг TradingView-ийн оригиналтай АДИЛХАН
+// study("CM_Williams_Vix_Fix")
+// wvf = ((highest(close, pd)-low)/(highest(close, pd)))*100
+// col = wvf >= upperBand or wvf >= rangeHigh ? lime : gray
 //+------------------------------------------------------------------+
 double CalcWVF(int shift)
 {
@@ -1617,32 +1620,64 @@ double CalcWVF(int shift)
    return ((highest_close - low_val) / highest_close) * 100.0;
 }
 
+// Ногоон бар эсэх шалгах (оригинал Pine Script-тэй яг ижил)
+// col = wvf >= upperBand or wvf >= rangeHigh ? lime : gray
+bool IsVixGreen(int shift)
+{
+   double wvf = CalcWVF(shift);
+
+   // ── Bollinger Band: upperBand = sma(wvf, bbl) + mult * stdev(wvf, bbl) ──
+   double sum = 0;
+   for(int i = shift; i < shift + InpVixBBLen; i++)
+      sum += CalcWVF(i);
+   double midLine = sum / InpVixBBLen;
+
+   double sum_sq = 0;
+   for(int i = shift; i < shift + InpVixBBLen; i++)
+   {
+      double diff = CalcWVF(i) - midLine;
+      sum_sq += diff * diff;
+   }
+   double sDev = InpVixBBMult * MathSqrt(sum_sq / InpVixBBLen);
+   double upperBand = midLine + sDev;
+
+   // ── Percentile: rangeHigh = highest(wvf, lb) * ph ──
+   double wvf_highest = 0;
+   double wvf_lowest = 99999;
+   for(int i = shift; i < shift + InpVixPctLB; i++)
+   {
+      double w = CalcWVF(i);
+      if(w > wvf_highest) wvf_highest = w;
+      if(w < wvf_lowest) wvf_lowest = w;
+   }
+   double rangeHigh = wvf_highest * InpVixPctHi;  // 0.85
+   double rangeLow  = wvf_lowest * InpVixPctLo;   // 1.01
+
+   // ── Ногоон = wvf >= upperBand ЭСВЭЛ wvf >= rangeHigh ──
+   return (wvf >= upperBand) || (wvf >= rangeHigh);
+}
+
 bool IsVixFixSignal(int dir)
 {
    if(!InpVixEnable) return true;  // унтраасан бол шүүхгүй
 
-   double wvf = CalcWVF(1);  // Одоогийн 15min бар
-
-   // ── Сүүлийн N бар-д дохио байсан эсэх ──
-   if(dir == 1)  // BUY: ногоон >= 1.0 (ёроол)
+   if(dir == 1)  // BUY: ногоон бар = ёроол
    {
-      // Одоогийн бар эсвэл сүүлийн N бар-д wvf >= InpVixBuyLevel байсан
-      if(wvf >= InpVixBuyLevel) return true;
-      for(int k = 2; k <= InpVixRecent + 1; k++)
+      // Одоогийн бар эсвэл сүүлийн N бар-д ногоон байсан
+      for(int k = 1; k <= InpVixRecent + 1; k++)
       {
-         if(CalcWVF(k) >= InpVixBuyLevel) return true;
+         if(IsVixGreen(k)) return true;
       }
       return false;
    }
-   else  // SELL: саарал, 0 руу ойртож байвал (орой)
+   else  // SELL: саарал бар = орой (ногоон биш)
    {
-      // Одоогийн бар эсвэл сүүлийн N бар-д wvf <= InpVixSellLevel
-      if(wvf <= InpVixSellLevel) return true;
-      for(int k = 2; k <= InpVixRecent + 1; k++)
+      // Сүүлийн N бар-д ногоон огт байгаагүй = орой
+      for(int k = 1; k <= InpVixRecent + 1; k++)
       {
-         if(CalcWVF(k) <= InpVixSellLevel) return true;
+         if(IsVixGreen(k)) return false;  // ногоон байвал SELL биш
       }
-      return false;
+      return true;  // бүгд саарал = орой = SELL
    }
 }
 
