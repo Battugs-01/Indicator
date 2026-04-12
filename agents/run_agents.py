@@ -126,10 +126,10 @@ def save_cycle_log(cycle: int, winrate: float):
 
 def main():
     parser = argparse.ArgumentParser(description="Forex Bot 2-Agent систем")
-    parser.add_argument("--target-winrate", type=float, default=40.0,
+    parser.add_argument("--target-winrate", type=float, default=42.0,
                        help="Зорилго win rate (%%)")
-    parser.add_argument("--min-winrate", type=float, default=35.0,
-                       help="Дор хаяж win rate (%%) — бүх сарт хангагдах ёстой")
+    parser.add_argument("--min-winrate", type=float, default=38.0,
+                       help="Дор хаяж win rate (%%) — БҮХ сарт заавал хангагдах ёстой")
     parser.add_argument("--max-cycles", type=int, default=20,
                        help="Хамгийн их давталт")
     parser.add_argument("--start-cycle", type=int, default=1,
