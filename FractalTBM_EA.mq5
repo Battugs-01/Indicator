@@ -1661,44 +1661,37 @@ bool IsVixFixSignal(int dir)
 {
    if(!InpVixEnable) return true;  // унтраасан бол шүүхгүй
 
-   if(dir == 1)  // BUY: ногоон гараад → саарал руу шилжиж байвал = ёроол
+   if(dir == 1)  // BUY: ногоон гарвал = BUY
    {
-      // Сүүлийн бар-ууд дээр ногоон байсан (ёроол болсон)
-      bool was_green = false;
-      for(int k = 2; k <= InpVixRecent + 2; k++)
+      // Одоогийн бар эсвэл сүүлийн N бар-д ногоон байсан
+      for(int k = 1; k <= InpVixRecent + 1; k++)
       {
-         if(IsVixGreen(k)) { was_green = true; break; }
+         if(IsVixGreen(k)) return true;
       }
-      // Одоо саарал болсон (буцаж эхэллээ) = BUY
-      bool now_gray = !IsVixGreen(1);
-
-      return was_green && now_gray;
+      return false;
    }
-   else  // SELL: wvf → 0 руу дөхөж байвал = орой
+   else  // SELL: ёроол руу ороод ирвэл (0 руу дөхвөл) = SELL
    {
-      // Сүүлийн N бар-д wvf маш бага (0 руу ойртож байна)
       double wvf_now = CalcWVF(1);
-      double wvf_prev = CalcWVF(2);
 
-      // wvf буурч байна + маш бага утгатай
-      // Bollinger midLine-с доогуур + буурч байна = орой
+      // Bollinger midLine тооцоолох
       double sum = 0;
       for(int i = 1; i <= InpVixBBLen; i++)
          sum += CalcWVF(i);
       double midLine = sum / InpVixBBLen;
 
-      // wvf < midLine-ийн хагас + буурч байвал = 0 руу дөхөж байна
-      bool near_zero = wvf_now < midLine * 0.5;
-      bool decreasing = wvf_now < wvf_prev;
+      // wvf маш бага = ёроол руу ороод ирсэн = SELL
+      // Зурган дээрээс харахад бараг харагдахгүй жижиг бар = 0 ойролцоо
+      bool near_bottom = wvf_now < midLine * 0.3;
 
-      // Ногоон огт байхгүй (ёроол биш)
+      // Ногоон огт байхгүй
       bool no_green = true;
       for(int k = 1; k <= InpVixRecent + 1; k++)
       {
          if(IsVixGreen(k)) { no_green = false; break; }
       }
 
-      return near_zero && decreasing && no_green;
+      return near_bottom && no_green;
    }
 }
 
