@@ -168,48 +168,7 @@ void OnTick()
       }
    }
 
-   // ── SELL: ёроол руу ороод ирсэн (wvf бараг 0) ──
-   double wvf = CalcWVF(1);
-   double midLine = CalcMidLine();
-
-   if(wvf < midLine * 0.3 && !cur_green)
-   {
-      // Өмнөх бар-ууд ч ногоон биш байх
-      bool no_recent_green = true;
-      for(int i = 1; i <= 3; i++)
-      {
-         if(IsGreen(i)) { no_recent_green = false; break; }
-      }
-
-      if(no_recent_green)
-      {
-         // SELL! SL = entry лааны дээр
-         double entry = bid;
-         double candle_high = iHigh(_Symbol, PERIOD_M1, 1);
-         double sl = candle_high + InpSLBuffer * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-         double sl_dist = sl - entry;
-         if(sl_dist <= 0) return;
-         double tp = entry - sl_dist * InpRR;
-
-         double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-         sl = MathRound(sl / tick_size) * tick_size;
-         tp = MathRound(tp / tick_size) * tick_size;
-
-         double lot = CalcLot(sl_dist);
-         if(lot <= 0) return;
-
-         if(trade.Sell(lot, _Symbol, 0, sl, tp, "VIX_SELL"))
-         {
-            cnt_sell++;
-            double fill = trade.ResultPrice();
-            Print("🔴 VIX SELL #", cnt_sell,
-                  " | Fill: ", fill, " | Lot: ", lot,
-                  " | SL: ", sl, " (+", NormalizeDouble(sl_dist/pip, 0), "p)",
-                  " | TP: ", tp, " (-", NormalizeDouble((fill-tp)/pip, 0), "p)",
-                  " | WVF: ", NormalizeDouble(wvf, 3), " midLine: ", NormalizeDouble(midLine, 3));
-         }
-      }
-   }
+   // SELL ормооргүй — зөвхөн BUY
 }
 
 //+------------------------------------------------------------------+
