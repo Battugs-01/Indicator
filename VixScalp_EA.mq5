@@ -123,31 +123,52 @@ void OnTick()
 
    // ═══ VIX FIX ДОХИО ШАЛГАХ ═══
 
-   // Одоогийн бар ногоон/саарал
+   // Одоогийн бар-уудын мэдээлэл
    bool cur_green = IsGreen(1);
+   bool prev_green = IsGreen(2);
+   double c1_close = iClose(_Symbol, PERIOD_M1, 1);
+   double c1_open = iOpen(_Symbol, PERIOD_M1, 1);
+   double c2_close = iClose(_Symbol, PERIOD_M1, 2);
 
-   // ── BUY: олон ногоон байсан → яг саарал болсон ──
+   // ── BUY: ногоон байсан → саарал болсон → БУЦАЛТ баталгаажсан ──
+   // Алхам 1: Өмнө нь ногоон бар байсан (ёроол болсон)
+   // Алхам 2: Одоо саарал (паник дуусч байна)
+   // Алхам 3: Эхний ӨСӨЖ буй лаа (close > prev close) = буцалт баталгаажсан
    if(!cur_green)  // Одоо саарал
    {
-      // Өмнөх N+ бар ногоон байсан эсэх
+      // Өмнөх бар-уудад ногоон байсан эсэх
       int green_count = 0;
-      for(int i = 2; i <= InpGreenBars + 5; i++)
+      for(int i = 2; i <= InpGreenBars + 10; i++)
       {
          if(IsGreen(i)) green_count++;
-         else break;  // Ногоон тасарсан
       }
 
-      if(green_count >= InpGreenBars)
+      // Буцалт баталгаажсан: close > өмнөх close (үнэ өсөж эхэлсэн)
+      bool reversal_confirmed = (c1_close > c2_close) && (c1_close > c1_open);
+
+      if(green_count >= InpGreenBars && reversal_confirmed)
       {
-         // BUY! SL = entry лааны доор
+         // SL = ногоон бар-уудын хамгийн доод цэг (ёроолын жинхэнэ low)
+         double bottom_low = iLow(_Symbol, PERIOD_M1, 1);
+         for(int i = 2; i <= InpGreenBars + 10; i++)
+         {
+            if(IsGreen(i))
+            {
+               double lo = iLow(_Symbol, PERIOD_M1, i);
+               if(lo < bottom_low) bottom_low = lo;
+            }
+         }
+
          double entry = ask;
-         double candle_low = iLow(_Symbol, PERIOD_M1, 1);
-         double sl = candle_low - InpSLBuffer * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+         double sl = bottom_low - InpSLBuffer * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
          double sl_dist = entry - sl;
          if(sl_dist <= 0) return;
+
+         // SL хэт том бол алгасах (1min scalp учир хязгаарлах)
+         if(sl_dist > pip * 500) return;  // 500 pip-с их SL = алгасна
+
          double tp = entry + sl_dist * InpRR;
 
-         // Tick size-д тэгшлэх
          double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
          sl = MathRound(sl / tick_size) * tick_size;
          tp = MathRound(tp / tick_size) * tick_size;
@@ -163,7 +184,8 @@ void OnTick()
                   " | Fill: ", fill, " | Lot: ", lot,
                   " | SL: ", sl, " (-", NormalizeDouble(sl_dist/pip, 0), "p)",
                   " | TP: ", tp, " (+", NormalizeDouble((tp-fill)/pip, 0), "p)",
-                  " | Green bars: ", green_count);
+                  " | Green bars: ", green_count,
+                  " | Bottom: ", bottom_low);
          }
       }
    }
