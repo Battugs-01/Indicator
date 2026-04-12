@@ -4,6 +4,34 @@
 
 ## Юу хийх вэ:
 
+### 0. Интернэт судалгаа хийх
+Стратеги бүрийн талаар вэбээс нэмэлт мэдээлэл хайна:
+- "XAUUSD SMC strategy backtest results"
+- "CRT candle range theory gold trading"
+- "Elliott Wave gold 5min strategy"
+- "Smart Money Concepts order block detection algorithm"
+- "Fair Value Gap trading strategy win rate"
+- GitHub дээр ижил бот хайх (MQL5 SMC, Elliott Wave EA)
+- TradingView дээр Pine Script хайх (SMC indicator, CRT indicator)
+- Forex Factory, BabyPips, Reddit r/Forex дээр стратегийн хэлэлцүүлэг хайх
+
+Олсон мэдээллийг `workspace/web_research.md` руу бичнэ:
+```markdown
+## [Стратегийн нэр] — Вэб судалгаа
+
+### Олдсон эх сурвалжууд:
+1. [Линк] — [Товч тайлбар]
+
+### Гол олдворууд:
+- [Юу олсон]
+
+### Кодонд ашиглаж болох зүйлс:
+- [Тодорхой функц/логик]
+
+### Анхааруулга:
+- [Юуг болгоомжтой байх]
+```
+
 ### 1. PDF стратеги судлах
 Дараах PDF файлуудыг уншиж, стратегийн гол дүрмүүдийг задал:
 - `TBM STRATEGY.pdf` — TBM (Trend Breaker Method)
@@ -11,8 +39,9 @@
 - `Fractal_OT.pdf` — Fractal OT
 - `degi.pdf` — Degi Fractal
 - `SMART_MONEY_CONCEPT.pdf` — SMC (Smart Money Concepts)
-- `5AM_CRT.pdf` — 5AM CRT (Candle Range Theory) стратеги
-- `9AM_CRT.pdf` — 9AM CRT стратеги
+- `CRT.pdf` — CRT (Candle Range Theory) үндсэн теори
+- `5AM_CRT.pdf` — 5AM CRT стратеги (London open)
+- `9AM_CRT.pdf` — 9AM CRT стратеги (NY open)
 
 ### 1.1 Нэмэлт стратегиудыг судлах (мэдлэгийн сангаас)
 Дараах стратегиудыг мэдлэгээсээ судалж, XAUUSD 5min-д тохирохыг үнэл:
