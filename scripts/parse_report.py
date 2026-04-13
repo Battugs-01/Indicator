@@ -136,6 +136,12 @@ _LINE_RE = re.compile(
     re.I,
 )
 
+# Journal-аас шууд deal тоолох (EA-ийн counter эвдрэлд дархлаа байх)
+_SL_TRIG_RE = re.compile(r"stop loss triggered\s+#\d+\s+(buy|sell)", re.I)
+_TP_TRIG_RE = re.compile(r"take profit triggered\s+#\d+\s+(buy|sell)", re.I)
+_DEAL_CLOSE_RE = re.compile(r"deal #\d+\s+(buy|sell)\s+\d+\.?\d*\s+\S+\s+at\s+[\d.]+\s+done", re.I)
+_FINAL_BAL_RE = re.compile(r"final balance\s+([\d.]+)\s+\w+", re.I)
+
 _MONTH_BLOCK_RE = re.compile(r"(\d{4})\.(\d{2})")
 
 
@@ -144,18 +150,42 @@ def parse_journal_log(path: Path) -> dict[str, Any]:
     if not text:
         return {}
 
+    # EA-гийн Print() counter (эвдэрсэн байж болно)
     strategies: dict[str, dict[str, Any]] = {}
-    # Сүүлийн тохиолдлуудыг ашиглана (backtest эцэст хэвлэгддэг)
     for m in _LINE_RE.finditer(text):
         name = m.group(1).upper()
-        tp = int(m.group(2))
-        sl = int(m.group(3))
-        be = int(m.group(4))
-        win_raw = m.group(5)
-        win = None if win_raw.upper() == "N/A" else int(win_raw)
-        strategies[name] = {"tp": tp, "sl": sl, "be": be, "win_pct": win}
+        strategies[name] = {
+            "tp": int(m.group(2)),
+            "sl": int(m.group(3)),
+            "be": int(m.group(4)),
+            "win_pct": None if m.group(5).upper() == "N/A" else int(m.group(5)),
+        }
 
-    return {"strategies": strategies, "log_size": len(text)}
+    # EA-гээс үл хамаарах "хатуу" тоолол: MT5 Core лог "stop loss triggered" мөрийг тоолно
+    sl_hits = len(_SL_TRIG_RE.findall(text))
+    tp_hits = len(_TP_TRIG_RE.findall(text))
+    total_closed = sl_hits + tp_hits
+    raw_win_pct = round(100.0 * tp_hits / total_closed, 2) if total_closed else None
+
+    final_bal = None
+    fb = _FINAL_BAL_RE.search(text)
+    if fb:
+        try:
+            final_bal = float(fb.group(1))
+        except ValueError:
+            pass
+
+    return {
+        "strategies": strategies,
+        "log_size": len(text),
+        "raw_counts": {
+            "sl_triggered": sl_hits,
+            "tp_triggered": tp_hits,
+            "total_closed": total_closed,
+            "raw_win_pct": raw_win_pct,
+            "final_balance": final_bal,
+        },
+    }
 
 
 def to_markdown(data: dict[str, Any], ea: str, cycle: int = 0) -> str:
@@ -182,6 +212,18 @@ def to_markdown(data: dict[str, Any], ea: str, cycle: int = 0) -> str:
             row = strat.get(name)
             if row:
                 lines.append(f"| {name} | {row['tp']} | {row['sl']} | {row['be']} | {row['win_pct']}% |")
+        lines.append("")
+
+    # EA-гээс үл хамаарах raw count
+    raw = (data.get("journal", {}) or {}).get("raw_counts")
+    if raw:
+        lines.append("### Raw journal count (EA-ийн counter-оос үл хамаарах)")
+        lines.append("")
+        lines.append(f"- SL triggered: {raw.get('sl_triggered')}")
+        lines.append(f"- TP triggered: {raw.get('tp_triggered')}")
+        lines.append(f"- Total closed: {raw.get('total_closed')}")
+        lines.append(f"- **Raw Win%: {raw.get('raw_win_pct')}%**")
+        lines.append(f"- Final balance: {raw.get('final_balance')}")
         lines.append("")
 
     return "\n".join(lines)

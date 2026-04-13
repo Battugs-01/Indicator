@@ -1,0 +1,80 @@
+[
+  {
+    "month": "2025.10",
+    "from": "2025-10-01",
+    "to": "2025-10-31",
+    "total_trades": 17.0,
+    "profit_trades": 17.0,
+    "loss_trades": 0.0,
+    "win_rate_pct": 100.0,
+    "profit_factor": 27.49,
+    "net_profit": 386.8,
+    "max_dd_pct": 0.88,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\monthly_2025_10.htm"
+  },
+  {
+    "month": "2025.11",
+    "from": "2025-11-01",
+    "to": "2025-11-30",
+    "total_trades": 21.0,
+    "profit_trades": 21.0,
+    "loss_trades": 0.0,
+    "win_rate_pct": 100.0,
+    "profit_factor": 27.48,
+    "net_profit": 479.76,
+    "max_dd_pct": 0.88,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\monthly_2025_11.htm"
+  },
+  {
+    "month": "2025.12",
+    "from": "2025-12-01",
+    "to": "2025-12-31",
+    "total_trades": 20.0,
+    "profit_trades": 20.0,
+    "loss_trades": 0.0,
+    "win_rate_pct": 100.0,
+    "profit_factor": 27.48,
+    "net_profit": 456.52,
+    "max_dd_pct": 0.88,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\monthly_2025_12.htm"
+  },
+  {
+    "month": "2026.01",
+    "from": "2026-01-01",
+    "to": "2026-01-31",
+    "total_trades": 27.0,
+    "profit_trades": 27.0,
+    "loss_trades": 0.0,
+    "win_rate_pct": 100.0,
+    "profit_factor": 27.46,
+    "net_profit": 619.2,
+    "max_dd_pct": 0.88,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\monthly_2026_01.htm"
+  },
+  {
+    "month": "2026.01",
+    "from": "2026-01-01",
+    "to": "2026-01-31",
+    "total_trades": 27.0,
+    "profit_trades": 27.0,
+    "loss_trades": 0.0,
+    "win_rate_pct": 100.0,
+    "profit_factor": 27.46,
+    "net_profit": 619.2,
+    "max_dd_pct": 0.88,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\monthly_2026_01.htm"
+  },
+  {
+    "month": "2026.03",
+    "from": "2026-03-01",
+    "to": "2026-03-31",
+    "total_trades": 16.0,
+    "profit_trades": 16.0,
+    "loss_trades": 0.0,
+    "win_rate_pct": 100.0,
+    "profit_factor": 27.5,
+    "net_profit": 363.56,
+    "max_dd_pct": 0.88,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\monthly_2026_03.htm"
+  }
+]

@@ -6,7 +6,8 @@
 
 - **Target symbol/timeframe:** XAUUSD M5
 - **Зорилго win rate:** нийт ≥42% БА сар бүр ≥38% (6 сарын backtest)
-- **Одоогийн baseline (хэрэглэгч мэдэгдсэн):** Fractal ~30% сарын, TBM маш муу
+- **Baseline (2026-04-13 хэмжсэн):** FractalTBM_EA default параметр = 126 trade / 25.4% Win / +$3 / PF 1.16 / Max DD 5%. Live хяналтын ~30%-тай ойртуулсан.
+- **`.set` override ажиллахгүй** — MT5 Strategy Tester нь file-аас input override хүлээж авдаггүй. Тиймээс параметр өөрчлөхдөө EA-ийн source code-ын `input` default-ыг шууд өөрчлөх ёстой.
 - **1-р тэргүүлэх:** Fractal sub-strategy-г сайжруулна (rule tightening, filter, SL/TP, cooldown). TBM-ийг шүүлтүүрээр unrдсан унтраагдсан (`InpTBMEnable=false`) байдлаар авч үзнэ.
 - **2-р тэргүүлэх:** Fractal хангалттай болсны дараа SMC / CRT / Vix Fix filter гэж нэмнэ.
 - **ЗОГСОНО:** TBM-г эмчлэх гэж цаг бүү үр. Хэрэглэгч "TBM асуудалтай, орхи" гэж тусгайлан хэлсэн.

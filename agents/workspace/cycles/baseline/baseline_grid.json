@@ -1,0 +1,77 @@
+[
+  {
+    "name": "1_pure_fractal",
+    "inputs": {
+      "InpTBMEnable": "false",
+      "InpVixEnable": "false",
+      "InpSessionFilter": "false"
+    },
+    "total_trades": 126.0,
+    "win_rate_pct": 25.4,
+    "profit_factor": 1.16,
+    "total_net_profit": 3.0,
+    "max_drawdown_abs": 685.53,
+    "max_drawdown_pct": 5.0,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\baseline_1_pure_fractal.htm"
+  },
+  {
+    "name": "2_fractal_session",
+    "inputs": {
+      "InpTBMEnable": "false",
+      "InpVixEnable": "false",
+      "InpSessionFilter": "true"
+    },
+    "total_trades": 126.0,
+    "win_rate_pct": 25.4,
+    "profit_factor": 1.16,
+    "total_net_profit": 3.0,
+    "max_drawdown_abs": 685.53,
+    "max_drawdown_pct": 5.0,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\baseline_2_fractal_session.htm"
+  },
+  {
+    "name": "3_fractal_vix",
+    "inputs": {
+      "InpTBMEnable": "false",
+      "InpVixEnable": "true",
+      "InpSessionFilter": "false"
+    },
+    "total_trades": null,
+    "win_rate_pct": null,
+    "profit_factor": null,
+    "total_net_profit": null,
+    "max_drawdown_abs": null,
+    "max_drawdown_pct": null,
+    "report_path": null
+  },
+  {
+    "name": "4_fractal_session_vix",
+    "inputs": {
+      "InpTBMEnable": "false",
+      "InpVixEnable": "true",
+      "InpSessionFilter": "true"
+    },
+    "total_trades": 126.0,
+    "win_rate_pct": 25.4,
+    "profit_factor": 1.16,
+    "total_net_profit": 3.0,
+    "max_drawdown_abs": 685.53,
+    "max_drawdown_pct": 5.0,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\baseline_4_fractal_session_vix.htm"
+  },
+  {
+    "name": "5_all_on_defaults",
+    "inputs": {
+      "InpTBMEnable": "true",
+      "InpVixEnable": "true",
+      "InpSessionFilter": "true"
+    },
+    "total_trades": 126.0,
+    "win_rate_pct": 25.4,
+    "profit_factor": 1.16,
+    "total_net_profit": 3.0,
+    "max_drawdown_abs": 685.53,
+    "max_drawdown_pct": 5.0,
+    "report_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\baseline_5_all_on_defaults.htm"
+  }
+]

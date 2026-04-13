@@ -13,26 +13,26 @@
 //--- INPUTS
 input group "=== Money Management ==="
 input double   InpRiskPct     = 2.0;      // Эрсдэлийн хувь (%) — дансны 2%
-input int      InpSL_Pips     = 1000;     // Stop Loss (1000 pip = $1.00 зай = 0.02 lot-д $20)
-input int      InpTP_Pips     = 3000;     // Take Profit (3000 pip = $3.00 зай = 0.02 lot-д $60) RR 1:3
-input int      InpBE_Pips     = 1500;     // 1500 pip ашигтай болоход SL-г BE болгох
+input int      InpSL_Pips     = 800;      // Stop Loss — RR 1:1.5
+input int      InpTP_Pips     = 1200;     // Take Profit — RR 1:1.5
+input int      InpBE_Pips     = 600;      // 600 pip ашигтай болоход SL-г BE болгох
 input double   InpMaxLot      = 1.0;      // Хамгийн их lot (аюулгүй хязгаар)
-input int      InpMaxSpread   = 40;       // Хамгийн их спрэд (pip) — энэнээс дээш бол entry нээхгүй
+input int      InpMaxSpread   = 25;       // Хамгийн их спрэд (pip)
 input int      InpMaxPositions = 5;      // Хамгийн их нэгэн зэрэг нээлттэй позиц
 input int      InpMagic       = 20260406; // Magic Number
 
 input group "=== Fractal ==="
 input int      InpATR_Len     = 14;       // ATR Length
-input double   InpDispMult    = 1.5;      // Шилжүүлэгч ATR x
+input double   InpDispMult    = 1.8;      // Шилжүүлэгч ATR x
 input int      InpLookback    = 20;       // Бүс lookback
 input double   InpMaxRange    = 5.0;      // Бүс max range (ATR x)
-input int      InpCooldown    = 20;       // Cooldown (bars)
+input int      InpCooldown    = 25;       // Cooldown (bars)
 
 input group "=== Шүүлтүүр ==="
 input bool     InpSessionFilter = true;   // Session шүүлтүүр (London+NY)
 
 input group "=== TBM ==="
-input bool     InpTBMEnable   = true;     // TBM идэвхтэй эсэх
+input bool     InpTBMEnable   = false;    // TBM идэвхтэй эсэх (Cycle 1: унтраасан)
 input int      InpSwingLen    = 5;        // Swing Length
 input double   InpConfTol     = 2.0;      // Уялдаа tolerance (ATR x)
 input double   InpErlizTol    = 3.0;      // Эрлийз threshold (ATR x) — 5.0-с бууруулсан
@@ -76,6 +76,8 @@ bool   f_pb_inner_ranging = false;
 bool   f_pb_inner_disp = false;
 int    f_prev_cd = 0;
 int    f_last_signal_bar = 0;
+int    f_entries_today = 0;
+int    f_last_entry_day = -1;
 
 // Дотоод Fractal state (1р загварт)
 // 0=хайж байна, 1=range олдсон, 2=дотоод PB, 3=шилжүүлэгч, 4=дотоод PB2, 5=impulse дуусаж
@@ -585,7 +587,7 @@ void ProcessFractal(double atr_val)
                " zone_range: ", NormalizeDouble(zone_range, 2),
                " bars: ", bars_used,
                " pass: ", (disp_range >= zone_range && bars_used <= 10));
-         if(disp_range >= zone_range * 1.5 && bars_used >= 2 && bars_used <= 10)
+         if(disp_range >= zone_range * 1.8 && bars_used >= 2 && bars_used <= 8)
          {
             f_disp_dir = 1;
             f_disp_extreme = f_track_extreme;
@@ -626,7 +628,7 @@ void ProcessFractal(double atr_val)
                " zone_range: ", NormalizeDouble(zone_range, 2),
                " bars: ", bars_used,
                " pass: ", (disp_range >= zone_range && bars_used <= 10));
-         if(disp_range >= zone_range * 1.5 && bars_used >= 2 && bars_used <= 10)
+         if(disp_range >= zone_range * 1.8 && bars_used >= 2 && bars_used <= 8)
          {
             f_disp_dir = -1;
             f_disp_extreme = f_track_extreme;
@@ -759,13 +761,13 @@ void ProcessFractal(double atr_val)
          if(f_disp_dir == 1)
          {
             // Bull disp → PB доош → zone-ийн дээд хэсэгт хүрсэн үү?
-            if(GetLow(1) <= f_disp_zone_hi + atr_val * 0.5)
+            if(GetLow(1) <= f_disp_zone_hi + atr_val * 0.15)
                f_pb_reached_zone = true;
          }
          else if(f_disp_dir == -1)
          {
             // Bear disp → PB дээш → zone-ийн доод хэсэгт хүрсэн үү?
-            if(GetHigh(1) >= f_disp_zone_lo - atr_val * 0.5)
+            if(GetHigh(1) >= f_disp_zone_lo - atr_val * 0.15)
                f_pb_reached_zone = true;
          }
 
@@ -974,6 +976,19 @@ void AddMOM(double mom_p, double fib_0, double fib_1, int dir, double atr_val)
 void CheckEntry(double atr_val)
 {
    int cur_bar = iBars(_Symbol, PERIOD_M5);
+
+   // ── Өдрийн Fractal entry тоолуур (≤3/өдөр) ──
+   {
+      MqlDateTime _ddt;
+      TimeToStruct(TimeCurrent(), _ddt);
+      int day_key = _ddt.year * 10000 + _ddt.mon * 100 + _ddt.day;
+      if(day_key != f_last_entry_day)
+      {
+         f_last_entry_day = day_key;
+         f_entries_today = 0;
+      }
+   }
+
    double pip = GetPipSize();
    double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    double bid_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -990,7 +1005,7 @@ void CheckEntry(double atr_val)
       MqlDateTime dt;
       TimeToStruct(TimeCurrent(), dt);
       int hour = dt.hour;
-      bool in_session = (hour >= 7 && hour <= 12) || (hour >= 13 && hour <= 17);
+      bool in_session = (hour >= 8 && hour <= 11) || (hour >= 13 && hour <= 16);
       if(!in_session) return;
    }
 
@@ -1061,8 +1076,9 @@ void CheckEntry(double atr_val)
    // ═══════════════════════════════════════════
    if(f_pb_active)
    {
-      bool has_inner = f_pb_inner_ranging && f_pb_inner_disp;
-      int cur_pat = has_inner ? 1 : (f_pb_waves <= 3 ? 2 : 3);
+      // Зөвхөн 2р загвар (1–3 wave PB) — 1р (inner fractal) болон 3р (waves>3) унтраасан
+      if(f_pb_waves > 3) return;
+      int cur_pat = 2;
 
       // ── Entry trigger: CHOCH ──
       bool entry_trigger_bull = false;
@@ -1084,6 +1100,12 @@ void CheckEntry(double atr_val)
       bool candle_confirmed = (f_disp_dir == 1 && f_candle_bull) || (f_disp_dir == -1 && f_candle_bear);
       bool vix_confirmed = (f_disp_dir == 1 && f_vix_bull) || (f_disp_dir == -1 && f_vix_bear);
 
+      // HTF alignment заавал шаардах (тодорхойгүй trend үед entry хориглох)
+      if(htf_trend == 0 || !htf_aligned) return;
+
+      // Өдрийн 3 entry хязгаар
+      if(f_entries_today >= 3) return;
+
       int grade = 0;
       // A.1: CHOCH + Liq + HTF BOS + Candle + Vix (бүгд)
       if(liq_sweep && htf_finalize && candle_confirmed && vix_confirmed && (entry_trigger_bull || entry_trigger_bear))
@@ -1100,13 +1122,11 @@ void CheckEntry(double atr_val)
 
       string grade_name = grade == 1 ? "A.1" : grade == 2 ? "A" : grade == 3 ? "B" : grade == 4 ? "Pot" : "NONE";
 
-      // ── 2р загварт Grade B+ шаардах (win rate 25% → сайжруулах) ──
-      bool grade_ok = true;
-      if(cur_pat == 2 && grade > 2)
-         grade_ok = false;  // 2р загвар: заавал A.1 эсвэл A
+      // ── Grade gate: зөвхөн A.1/A (grade 1-2) зөвшөөрнө ──
+      bool grade_ok = (grade >= 1 && grade <= 2);
 
-      bool entry_bull = (entry_trigger_bull && grade >= 1 && grade <= 4 && grade_ok);
-      bool entry_bear = (entry_trigger_bear && grade >= 1 && grade <= 4 && grade_ok);
+      bool entry_bull = (entry_trigger_bull && grade_ok && candle_confirmed);
+      bool entry_bear = (entry_trigger_bear && grade_ok && candle_confirmed);
 
       string pat_name = cur_pat == 1 ? "1р" : cur_pat == 2 ? "2р" : "3р";
 
@@ -1145,6 +1165,7 @@ void CheckEntry(double atr_val)
                   " | Candle: ", candle_confirmed, " | Vix: ", vix_confirmed);
             f_active_pattern = cur_pat;
             last_entry_time = TimeCurrent();
+            f_entries_today++;
             open_count++;
          }
          else
@@ -1175,6 +1196,7 @@ void CheckEntry(double atr_val)
                   " | Candle: ", candle_confirmed, " | Vix: ", vix_confirmed);
             f_active_pattern = cur_pat;
             last_entry_time = TimeCurrent();
+            f_entries_today++;
             open_count++;
          }
          else

@@ -40,26 +40,27 @@ from mt5_utils import (  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-TESTER_INI_TEMPLATE = """\
-[Tester]
-Expert={ea}
-Symbol={symbol}
-Period={period}
-Optimization=0
-Model=2
-FromDate={from_date}
-ToDate={to_date}
-ForwardMode=0
-Deposit=10000
-Currency=USD
-ProfitInPips=0
-Leverage=100
-ExecutionMode=0
-Report={report}
-ReplaceReport=1
-ShutdownTerminal=1
-Visual=0
-"""
+TESTER_INI_TEMPLATE = (
+    "[Tester]\r\n"
+    "Expert={ea}\r\n"
+    "Symbol={symbol}\r\n"
+    "Period={period}\r\n"
+    "Optimization=0\r\n"
+    "Model=2\r\n"
+    "FromDate={from_date}\r\n"
+    "ToDate={to_date}\r\n"
+    "ForwardMode=0\r\n"
+    "Deposit=10000\r\n"
+    "Currency=USD\r\n"
+    "ProfitInPips=0\r\n"
+    "Leverage=100\r\n"
+    "ExecutionMode=0\r\n"
+    "{expert_parameters}"
+    "Report={report}\r\n"
+    "ReplaceReport=1\r\n"
+    "ShutdownTerminal=1\r\n"
+    "Visual=0\r\n"
+)
 
 
 def write_tester_ini(
@@ -69,6 +70,7 @@ def write_tester_ini(
     period: str,
     months: int,
     report_name: str,
+    set_file: Path | None = None,
 ) -> Path:
     end = datetime.now()
     start = end - timedelta(days=months * 31)
@@ -76,6 +78,12 @@ def write_tester_ini(
     cfg_dir = data_path / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     ini_path = cfg_dir / "tester_auto.ini"
+
+    expert_parameters = ""
+    if set_file:
+        # MT5 tester.ini-д зөвхөн filename (зам биш)
+        expert_parameters = f"ExpertParameters={set_file.name}\r\n"
+
     content = TESTER_INI_TEMPLATE.format(
         ea=ea,
         symbol=symbol,
@@ -83,16 +91,16 @@ def write_tester_ini(
         from_date=start.strftime("%Y.%m.%d"),
         to_date=end.strftime("%Y.%m.%d"),
         report=report_name,
+        expert_parameters=expert_parameters,
     )
-    ini_path.write_text(content, encoding="utf-16-le")
-    # MT5 ini файл UTF-16-LE BOM хэрэгтэй гэж үздэг
+    # MT5 config ini: UTF-16-LE with BOM, CRLF line endings
     ini_path.write_bytes(b"\xff\xfe" + content.encode("utf-16-le"))
     return ini_path
 
 
 def run_terminal_tester(ini_path: Path, timeout: float = 900.0) -> dict[str, Any]:
     """terminal64.exe-г tester config-тай дуудна. ShutdownTerminal=1 → өөрөө хаагдана."""
-    cmd = [str(TERMINAL_EXE), "/portable", f"/config:{ini_path}"]
+    cmd = [str(TERMINAL_EXE), f"/config:{ini_path}"]
     start = time.time()
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -149,6 +157,7 @@ def run_backtest(
     months: int = 6,
     report_name: str = "backtest_report",
     restart_live: bool = False,
+    set_inputs: dict | None = None,
 ) -> dict[str, Any]:
     data_path = get_data_path()
     experts = experts_dir(data_path)
@@ -159,10 +168,21 @@ def run_backtest(
     print(f"[backtest] symbol={symbol} tf={period} months={months}")
     print(f"[backtest] data_path={data_path}")
 
-    if not ensure_symbol(symbol):
-        return {"ok": False, "error": f"symbol_select failed for {symbol}"}
+    try:
+        if not ensure_symbol(symbol):
+            print(f"[backtest] ensure_symbol failed — strategy tester may auto-fetch")
+    except Exception as e:
+        print(f"[backtest] ensure_symbol skipped: {e}")
 
-    ini_path = write_tester_ini(data_path, ea, symbol, period, months, report_name)
+    set_path = None
+    if set_inputs:
+        from make_setfile import write_set
+        # MT5 auto-loads MQL5/Profiles/Tester/{ExpertName}.set
+        set_path = data_path / "MQL5" / "Profiles" / "Tester" / f"{ea}.set"
+        write_set(set_path, set_inputs)
+        print(f"[backtest] set file written: {set_path} ({len(set_inputs)} overrides)")
+
+    ini_path = write_tester_ini(data_path, ea, symbol, period, months, report_name, set_file=set_path)
     print(f"[backtest] ini={ini_path}")
 
     print("[backtest] stopping live terminal...")

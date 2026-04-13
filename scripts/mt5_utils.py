@@ -25,19 +25,55 @@ METAEDITOR_EXE = MT5_INSTALL / "MetaEditor64.exe"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def get_data_path() -> Path:
-    """MT5 terminal-ийн data folder-г Python API-р олно."""
-    import MetaTrader5 as mt5
+_DATA_PATH_CACHE = REPO_ROOT / ".mt5_data_path"
 
-    if not mt5.initialize():
-        raise RuntimeError(f"MT5 initialize алдаа: {mt5.last_error()}")
+
+def get_data_path() -> Path:
+    """MT5 terminal-ийн data folder-г олно.
+
+    Order:
+      1. MT5_DATA_PATH env variable
+      2. Cached file .mt5_data_path (repo root)
+      3. Python API (MT5 terminal ажиллаж байх ёстой)
+      4. AppData/Roaming/MetaQuotes/Terminal доорх 32-тэмдэгт hash folder
+    """
+    env = os.environ.get("MT5_DATA_PATH")
+    if env and Path(env).exists():
+        return Path(env)
+
+    if _DATA_PATH_CACHE.exists():
+        cached = Path(_DATA_PATH_CACHE.read_text(encoding="utf-8").strip())
+        if cached.exists():
+            return cached
+
     try:
-        ti = mt5.terminal_info()
-        if ti is None:
-            raise RuntimeError("terminal_info() None буцаалаа")
-        return Path(ti.data_path)
-    finally:
-        mt5.shutdown()
+        import MetaTrader5 as mt5
+
+        if mt5.initialize():
+            try:
+                ti = mt5.terminal_info()
+                if ti is not None:
+                    path = Path(ti.data_path)
+                    _DATA_PATH_CACHE.write_text(str(path), encoding="utf-8")
+                    return path
+            finally:
+                mt5.shutdown()
+    except Exception:
+        pass
+
+    # Fallback: AppData roaming доор scan хийнэ
+    roaming = Path(os.environ.get("APPDATA", r"C:\Users\Administrator\AppData\Roaming"))
+    base = roaming / "MetaQuotes" / "Terminal"
+    if base.exists():
+        candidates = [p for p in base.iterdir() if p.is_dir() and len(p.name) == 32]
+        if candidates:
+            # Хамгийн шинээр өөрчлөгдсөн
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            path = candidates[0]
+            _DATA_PATH_CACHE.write_text(str(path), encoding="utf-8")
+            return path
+
+    raise RuntimeError("MT5 data path олдсонгүй — terminal эхлүүлээд дахин оролдоно уу")
 
 
 def experts_dir(data_path: Path) -> Path:

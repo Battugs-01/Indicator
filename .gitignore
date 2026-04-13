@@ -11,3 +11,9 @@ __pycache__/
 # Secrets
 *.pem
 .env
+
+# Local MT5 data path cache
+.mt5_data_path
+
+# Volatile workspace runtime state
+agents/workspace/budget.json

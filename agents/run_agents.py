@@ -11,7 +11,7 @@ import sys
 import os
 import json
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Windows дээр Cyrillic-ийн cp1252 алдаа гаргахгүйн тулд
@@ -33,6 +33,10 @@ DEVELOPER_PROMPT = BASE_DIR / "agents" / "developer_prompt.md"
 # Claude CLI-ийн зам (Windows дээр .cmd байж магадгүй)
 CLAUDE_CMD = os.environ.get("CLAUDE_CMD", "claude")
 
+# Budget guard — 5-цагийн rate limit window-д 65% хүрэхэд зогсоно
+BUDGET_CAP_USD = float(os.environ.get("BUDGET_CAP_USD", "130"))  # $200 x 65%
+BUDGET_FILE = None  # set in setup_workspace()
+
 def _subprocess_env() -> dict:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
@@ -43,7 +47,60 @@ def _subprocess_env() -> dict:
 def setup_workspace():
     """Workspace фолдер үүсгэх"""
     WORKSPACE.mkdir(parents=True, exist_ok=True)
+    global BUDGET_FILE
+    BUDGET_FILE = WORKSPACE / "budget.json"
+    if not BUDGET_FILE.exists():
+        BUDGET_FILE.write_text(
+            json.dumps({"window_start": datetime.now().isoformat(), "total_usd": 0.0, "calls": 0}),
+            encoding="utf-8",
+        )
     print(f"Workspace: {WORKSPACE}")
+
+
+def _load_budget() -> dict:
+    if BUDGET_FILE and BUDGET_FILE.exists():
+        return json.loads(BUDGET_FILE.read_text(encoding="utf-8"))
+    return {"window_start": datetime.now().isoformat(), "total_usd": 0.0, "calls": 0}
+
+
+def _save_budget(b: dict) -> None:
+    if BUDGET_FILE:
+        BUDGET_FILE.write_text(json.dumps(b, indent=2), encoding="utf-8")
+
+
+def _budget_window_reset_if_old(b: dict) -> dict:
+    """5-цагийн window хуучирсан бол тэглэнэ."""
+    start = datetime.fromisoformat(b["window_start"])
+    if datetime.now() - start > timedelta(hours=5):
+        return {"window_start": datetime.now().isoformat(), "total_usd": 0.0, "calls": 0}
+    return b
+
+
+def _wait_for_budget_reset(b: dict) -> None:
+    start = datetime.fromisoformat(b["window_start"])
+    resume_at = start + timedelta(hours=5, minutes=5)
+    wait_sec = max(0, (resume_at - datetime.now()).total_seconds())
+    print(f"\n⏸ BUDGET CAP (${b['total_usd']:.2f} >= ${BUDGET_CAP_USD}) — зогсоно")
+    print(f"   Дахин сэрэх: {resume_at.isoformat()} ({wait_sec/60:.0f} мин)")
+    import time
+    time.sleep(wait_sec)
+
+
+def _check_and_track_usage(response_json: dict) -> None:
+    """Claude CLI JSON response-оос total_cost_usd уншиж budget-д нэмнэ."""
+    cost = response_json.get("total_cost_usd") or response_json.get("cost_usd") or 0.0
+    if not cost:
+        return
+    b = _load_budget()
+    b = _budget_window_reset_if_old(b)
+    b["total_usd"] = round(b["total_usd"] + float(cost), 4)
+    b["calls"] = b.get("calls", 0) + 1
+    _save_budget(b)
+    print(f"  💰 budget: ${b['total_usd']:.3f} / ${BUDGET_CAP_USD} ({b['calls']} calls)")
+    if b["total_usd"] >= BUDGET_CAP_USD:
+        _wait_for_budget_reset(b)
+        # Window reset
+        _save_budget({"window_start": datetime.now().isoformat(), "total_usd": 0.0, "calls": 0})
 
 def run_research_agent(cycle: int):
     """Судлаач Agent ажиллуулах"""
@@ -66,16 +123,23 @@ def run_research_agent(cycle: int):
 """
 
     result = subprocess.run(
-        [CLAUDE_CMD, "--print", "-p", prompt],
+        [CLAUDE_CMD, "--print", "--permission-mode", "bypassPermissions",
+         "--output-format", "json"],
+        input=prompt,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=str(BASE_DIR), timeout=600, env=_subprocess_env(), shell=(os.name == "nt"),
+        cwd=str(BASE_DIR), timeout=1200, env=_subprocess_env(), shell=(os.name == "nt"),
     )
+    try:
+        response_json = json.loads(result.stdout) if result.stdout else {}
+        _check_and_track_usage(response_json)
+        if isinstance(response_json, dict) and response_json.get("result"):
+            print(response_json["result"][-500:])
+    except Exception:
+        pass
 
     if result.returncode != 0:
-        print(f"Судлаач алдаа: {result.stderr}")
+        print(f"Судлаач алдаа: {result.stderr[-500:]}")
         return False
-
-    print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
     return True
 
 def run_developer_agent(cycle: int):
@@ -97,16 +161,23 @@ EA файл: {EA_FILE}
 """
 
     result = subprocess.run(
-        [CLAUDE_CMD, "--print", "-p", prompt],
+        [CLAUDE_CMD, "--print", "--permission-mode", "bypassPermissions",
+         "--output-format", "json"],
+        input=prompt,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=str(BASE_DIR), timeout=1200, env=_subprocess_env(), shell=(os.name == "nt"),
+        cwd=str(BASE_DIR), timeout=1800, env=_subprocess_env(), shell=(os.name == "nt"),
     )
+    try:
+        response_json = json.loads(result.stdout) if result.stdout else {}
+        _check_and_track_usage(response_json)
+        if isinstance(response_json, dict) and response_json.get("result"):
+            print(response_json["result"][-500:])
+    except Exception:
+        pass
 
     if result.returncode != 0:
-        print(f"Хөгжүүлэгч алдаа: {result.stderr}")
+        print(f"Хөгжүүлэгч алдаа: {result.stderr[-500:]}")
         return False
-
-    print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
     return True
 
 def check_winrate():
