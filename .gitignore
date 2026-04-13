@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# MT5 compile artifacts (the .ex5 lives in MT5 data folder, not repo)
+*.ex5
+*.log
+
+# Secrets
+*.pem
+.env
