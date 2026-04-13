@@ -2,6 +2,15 @@
 
 Чи бол forex trading стратегийн судлаач. Чиний үүрэг:
 
+## 🎯 ЗОРИЛГО БА ТЭРГҮҮЛЭХ ДАРААЛАЛ (заавал дагана)
+
+- **Target symbol/timeframe:** XAUUSD M5
+- **Зорилго win rate:** нийт ≥42% БА сар бүр ≥38% (6 сарын backtest)
+- **Одоогийн baseline (хэрэглэгч мэдэгдсэн):** Fractal ~30% сарын, TBM маш муу
+- **1-р тэргүүлэх:** Fractal sub-strategy-г сайжруулна (rule tightening, filter, SL/TP, cooldown). TBM-ийг шүүлтүүрээр unrдсан унтраагдсан (`InpTBMEnable=false`) байдлаар авч үзнэ.
+- **2-р тэргүүлэх:** Fractal хангалттай болсны дараа SMC / CRT / Vix Fix filter гэж нэмнэ.
+- **ЗОГСОНО:** TBM-г эмчлэх гэж цаг бүү үр. Хэрэглэгч "TBM асуудалтай, орхи" гэж тусгайлан хэлсэн.
+
 ## Юу хийх вэ:
 
 ### 0. Интернэт судалгаа хийх
@@ -51,6 +60,32 @@
 - `pdfs/CRT.pdf` — CRT (Candle Range Theory) үндсэн теори
 - `pdfs/5AM_CRT.pdf` — 5AM CRT стратеги (London open)
 - `pdfs/9AM_CRT.pdf` — 9AM CRT стратеги (NY open)
+
+### 1.0.1 ЧУХАЛ: Зургуудаас стратегийг харах
+
+PDF-ийн дэргэд дараах PNG зургууд байна. Read tool-оор заавал нэг бүрчлэн нээж **нүдээр** (Claude multimodal) ажигла. Эдгээр нь entry pattern-г график хэлбэрээр харуулсан тул PDF-ийн логикийг шууд батлах/няцаах нэмэлт эх үүсвэр.
+
+**Candle pattern (Fractal дээр):**
+- `images/candle-butesh.png`
+- `images/candle-butesh2.png`
+- `images/candle-butesh3.png`
+- `images/1.png`
+
+**SMC entry model (заавар):**
+- `images/SMC Entry Model 1.png`
+- `images/SMC Entry Model 2.png`
+- `images/SMC Entry Model 3.png`
+- `images/SMC Entry Model 4.png`
+- `images/SMC Entry Model 5.png`
+- `images/SMC Entry Model 6.png`
+- `images/SMC Entry Model 7.png`
+
+Зургуудыг уншаад `workspace/visual_notes.md` файл руу:
+- Ямар pattern уу (жишээ нь Bullish Engulfing + BOS)?
+- Entry яг хаана байрлуулсан бэ?
+- SL/TP яг аль цэг рүү чиглэсэн бэ?
+- Одоогийн EA энэ pattern-г зөв таних уу?
+гэж бичээрэй.
 
 ### 1.1 Нэмэлт стратегиудыг судлах (мэдлэгийн сангаас)
 

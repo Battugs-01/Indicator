@@ -14,6 +14,15 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+# Windows дээр Cyrillic-ийн cp1252 алдаа гаргахгүйн тулд
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Замууд
 BASE_DIR = Path(__file__).parent.parent
 WORKSPACE = BASE_DIR / "agents" / "workspace"
@@ -21,9 +30,19 @@ EA_FILE = BASE_DIR / "FractalTBM_EA.mq5"
 RESEARCH_PROMPT = BASE_DIR / "agents" / "research_prompt.md"
 DEVELOPER_PROMPT = BASE_DIR / "agents" / "developer_prompt.md"
 
+# Claude CLI-ийн зам (Windows дээр .cmd байж магадгүй)
+CLAUDE_CMD = os.environ.get("CLAUDE_CMD", "claude")
+
+def _subprocess_env() -> dict:
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def setup_workspace():
     """Workspace фолдер үүсгэх"""
-    WORKSPACE.mkdir(exist_ok=True)
+    WORKSPACE.mkdir(parents=True, exist_ok=True)
     print(f"Workspace: {WORKSPACE}")
 
 def run_research_agent(cycle: int):
@@ -35,7 +54,7 @@ def run_research_agent(cycle: int):
     prompt = f"""
 Чи Судлаач Agent. Цикл #{cycle}.
 
-{RESEARCH_PROMPT.read_text()}
+{RESEARCH_PROMPT.read_text(encoding='utf-8')}
 
 Одоогийн файлууд:
 - EA: {EA_FILE}
@@ -47,9 +66,9 @@ def run_research_agent(cycle: int):
 """
 
     result = subprocess.run(
-        ["claude", "--print", "-p", prompt],
-        capture_output=True, text=True, cwd=str(BASE_DIR),
-        timeout=300
+        [CLAUDE_CMD, "--print", "-p", prompt],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=str(BASE_DIR), timeout=600, env=_subprocess_env(), shell=(os.name == "nt"),
     )
 
     if result.returncode != 0:
@@ -68,7 +87,7 @@ def run_developer_agent(cycle: int):
     prompt = f"""
 Чи Хөгжүүлэгч Agent. Цикл #{cycle}.
 
-{DEVELOPER_PROMPT.read_text()}
+{DEVELOPER_PROMPT.read_text(encoding='utf-8')}
 
 Шаардлага: {WORKSPACE}/requirements.md
 EA файл: {EA_FILE}
@@ -78,9 +97,9 @@ EA файл: {EA_FILE}
 """
 
     result = subprocess.run(
-        ["claude", "--print", "-p", prompt],
-        capture_output=True, text=True, cwd=str(BASE_DIR),
-        timeout=600
+        [CLAUDE_CMD, "--print", "-p", prompt],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=str(BASE_DIR), timeout=1200, env=_subprocess_env(), shell=(os.name == "nt"),
     )
 
     if result.returncode != 0:
@@ -96,7 +115,7 @@ def check_winrate():
     if not results_file.exists():
         return 0.0, []
 
-    content = results_file.read_text()
+    content = results_file.read_text(encoding='utf-8')
     import re
 
     # Нийт win rate
@@ -114,7 +133,7 @@ def save_cycle_log(cycle: int, winrate: float):
     log_file = WORKSPACE / "cycle_log.json"
     logs = []
     if log_file.exists():
-        logs = json.loads(log_file.read_text())
+        logs = json.loads(log_file.read_text(encoding='utf-8'))
 
     logs.append({
         "cycle": cycle,
@@ -122,7 +141,7 @@ def save_cycle_log(cycle: int, winrate: float):
         "winrate": winrate
     })
 
-    log_file.write_text(json.dumps(logs, indent=2))
+    log_file.write_text(json.dumps(logs, indent=2), encoding='utf-8')
 
 def main():
     parser = argparse.ArgumentParser(description="Forex Bot 2-Agent систем")
