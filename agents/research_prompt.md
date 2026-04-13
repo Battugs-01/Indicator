@@ -43,14 +43,14 @@
 
 Дараах PDF файлуудыг уншиж, стратегийн гол дүрмүүдийг задал:
 
-- `TBM STRATEGY.pdf` — TBM (Trend Breaker Method)
-- `Fractal.pdf` — Fractal теори
-- `Fractal_OT.pdf` — Fractal OT
-- `degi.pdf` — Degi Fractal
-- `SMART_MONEY_CONCEPT.pdf` — SMC (Smart Money Concepts)
-- `CRT.pdf` — CRT (Candle Range Theory) үндсэн теори
-- `5AM_CRT.pdf` — 5AM CRT стратеги (London open)
-- `9AM_CRT.pdf` — 9AM CRT стратеги (NY open)
+- `pdfs/TBM STRATEGY.pdf` — TBM (Trend Breaker Method)
+- `pdfs/Fractal.pdf` — Fractal теори
+- `pdfs/Fractal_OT.pdf` — Fractal OT
+- `pdfs/degi.pdf` — Degi Fractal
+- `pdfs/SMART_MONEY_CONCEPT.pdf` — SMC (Smart Money Concepts)
+- `pdfs/CRT.pdf` — CRT (Candle Range Theory) үндсэн теори
+- `pdfs/5AM_CRT.pdf` — 5AM CRT стратеги (London open)
+- `pdfs/9AM_CRT.pdf` — 9AM CRT стратеги (NY open)
 
 ### 1.1 Нэмэлт стратегиудыг судлах (мэдлэгийн сангаас)
 

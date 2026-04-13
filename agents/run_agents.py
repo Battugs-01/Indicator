@@ -39,7 +39,7 @@ def run_research_agent(cycle: int):
 
 Одоогийн файлууд:
 - EA: {EA_FILE}
-- PDF-үүд: {BASE_DIR}/*.pdf
+- PDF-үүд: {BASE_DIR}/pdfs/*.pdf
 - Өмнөх үр дүн: {WORKSPACE}/results.md (байвал)
 
 `{WORKSPACE}/requirements.md` файл руу шаардлага бичээрэй.
